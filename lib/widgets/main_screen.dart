@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../providers/todo_provider.dart';
 import '../providers/layout_provider.dart';
+import 'settings_panel.dart';
 import 'todo_list_widget.dart';
 
 /// 主界面
@@ -50,6 +51,12 @@ class _MainScreenState extends ConsumerState<MainScreen> {
             icon: const Icon(Icons.add),
             tooltip: '新建列表',
             onPressed: _createNewList,
+          ),
+          // 设置按钮
+          IconButton(
+            icon: const Icon(Icons.settings_outlined),
+            tooltip: '设置',
+            onPressed: _openSettings,
           ),
           const SizedBox(width: 8),
         ],
@@ -161,6 +168,14 @@ class _MainScreenState extends ConsumerState<MainScreen> {
 
   void _createNewList() {
     ref.read(appDataProvider.notifier).createList();
+  }
+
+  void _openSettings() {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (context) => const SettingsPanel(),
+      ),
+    );
   }
 
   void _deleteList(String listId, String title) {

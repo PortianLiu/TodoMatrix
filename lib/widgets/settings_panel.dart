@@ -2,7 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../providers/layout_provider.dart';
+import '../providers/sync_provider.dart';
 import '../providers/todo_provider.dart';
+import '../services/discovery_service.dart';
 
 /// 设置面板
 class SettingsPanel extends ConsumerWidget {
@@ -29,10 +31,14 @@ class SettingsPanel extends ConsumerWidget {
           _buildColumnsTile(context, ref, layoutSettings.columnsPerRow),
           const Divider(),
 
-          // 同步设置（预留）
+          // 同步设置
           _buildSectionHeader(context, '同步'),
           _buildSyncTile(context, ref, settings.syncEnabled),
           _buildDeviceNameTile(context, ref, settings.deviceName),
+          if (settings.syncEnabled) ...[
+            _buildSyncStatusTile(context, ref),
+            _buildDeviceListTile(context, ref),
+          ],
         ],
       ),
     );
@@ -205,6 +211,96 @@ class SettingsPanel extends ConsumerWidget {
             child: const Text('确定'),
           ),
         ],
+      ),
+    );
+  }
+
+  /// 构建同步状态项
+  Widget _buildSyncStatusTile(BuildContext context, WidgetRef ref) {
+    final syncState = ref.watch(syncProvider);
+    final status = syncState.status;
+
+    String statusText;
+    IconData statusIcon;
+    Color? statusColor;
+
+    switch (status) {
+      case SyncStatus.idle:
+        statusText = '空闲';
+        statusIcon = Icons.cloud_outlined;
+        break;
+      case SyncStatus.discovering:
+        statusText = '正在搜索设备...';
+        statusIcon = Icons.search;
+        statusColor = Colors.blue;
+        break;
+      case SyncStatus.connecting:
+        statusText = syncState.message ?? '正在连接...';
+        statusIcon = Icons.sync;
+        statusColor = Colors.orange;
+        break;
+      case SyncStatus.syncing:
+        statusText = syncState.message ?? '正在同步...';
+        statusIcon = Icons.sync;
+        statusColor = Colors.orange;
+        break;
+      case SyncStatus.completed:
+        statusText = syncState.lastResult?.toString() ?? '同步完成';
+        statusIcon = Icons.check_circle;
+        statusColor = Colors.green;
+        break;
+      case SyncStatus.failed:
+        statusText = syncState.message ?? '同步失败';
+        statusIcon = Icons.error;
+        statusColor = Colors.red;
+        break;
+    }
+
+    return ListTile(
+      leading: Icon(statusIcon, color: statusColor),
+      title: const Text('同步状态'),
+      subtitle: Text(statusText),
+      trailing: status == SyncStatus.discovering
+          ? IconButton(
+              icon: const Icon(Icons.stop),
+              onPressed: () => ref.read(syncProvider.notifier).stopDiscovery(),
+            )
+          : IconButton(
+              icon: const Icon(Icons.refresh),
+              onPressed: () => ref.read(syncProvider.notifier).startDiscovery(),
+            ),
+    );
+  }
+
+  /// 构建设备列表项
+  Widget _buildDeviceListTile(BuildContext context, WidgetRef ref) {
+    final devices = ref.watch(discoveredDevicesProvider);
+
+    if (devices.isEmpty) {
+      return const ListTile(
+        leading: Icon(Icons.devices_other),
+        title: Text('附近设备'),
+        subtitle: Text('未发现设备，请确保其他设备已开启同步'),
+      );
+    }
+
+    return ExpansionTile(
+      leading: const Icon(Icons.devices_other),
+      title: const Text('附近设备'),
+      subtitle: Text('发现 ${devices.length} 个设备'),
+      children: devices.map((device) => _buildDeviceItem(context, ref, device)).toList(),
+    );
+  }
+
+  /// 构建单个设备项
+  Widget _buildDeviceItem(BuildContext context, WidgetRef ref, DeviceInfo device) {
+    return ListTile(
+      contentPadding: const EdgeInsets.only(left: 72, right: 16),
+      title: Text(device.deviceName),
+      subtitle: Text(device.address.address),
+      trailing: FilledButton.tonal(
+        onPressed: () => ref.read(syncProvider.notifier).syncWithDevice(device),
+        child: const Text('同步'),
       ),
     );
   }

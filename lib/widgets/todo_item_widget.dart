@@ -46,24 +46,59 @@ class _TodoItemWidgetState extends ConsumerState<TodoItemWidget> {
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      onSecondaryTapUp: (details) => _showContextMenu(context, details),
-      child: Container(
-        decoration: BoxDecoration(
-          border: Border(
-            bottom: BorderSide(
-              color: Theme.of(context).dividerColor.withValues(alpha: 0.3),
+    // 使用 LongPressDraggable 支持跨列表拖拽
+    return LongPressDraggable<Map<String, String>>(
+      data: {
+        'sourceListId': widget.listId,
+        'itemId': widget.item.id,
+      },
+      feedback: Material(
+        elevation: 4,
+        borderRadius: BorderRadius.circular(8),
+        child: Container(
+          width: 200,
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: Theme.of(context).colorScheme.primaryContainer,
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: Text(
+            widget.item.description,
+            style: TextStyle(
+              color: Theme.of(context).colorScheme.onPrimaryContainer,
             ),
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
           ),
         ),
-        child: ListTile(
-          dense: true,
-          leading: _buildLeading(),
-          title: _buildTitle(),
-          subtitle: _buildSubtitle(),
-          trailing: _buildTrailing(),
-          onTap: _toggleCompleted,
+      ),
+      childWhenDragging: Opacity(
+        opacity: 0.5,
+        child: _buildItemContent(),
+      ),
+      child: GestureDetector(
+        onSecondaryTapUp: (details) => _showContextMenu(context, details),
+        child: _buildItemContent(),
+      ),
+    );
+  }
+
+  Widget _buildItemContent() {
+    return Container(
+      decoration: BoxDecoration(
+        border: Border(
+          bottom: BorderSide(
+            color: Theme.of(context).dividerColor.withValues(alpha: 0.3),
+          ),
         ),
+      ),
+      child: ListTile(
+        dense: true,
+        leading: _buildLeading(),
+        title: _buildTitle(),
+        subtitle: _buildSubtitle(),
+        trailing: _buildTrailing(),
+        onTap: _toggleCompleted,
       ),
     );
   }

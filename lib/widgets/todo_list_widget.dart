@@ -39,10 +39,24 @@ class _TodoListWidgetState extends ConsumerState<TodoListWidget> {
   void initState() {
     super.initState();
     _titleController = TextEditingController();
+    // 监听焦点变化，失去焦点时收起添加框
+    _addItemFocusNode.addListener(_onAddItemFocusChange);
+  }
+
+  void _onAddItemFocusChange() {
+    if (!_addItemFocusNode.hasFocus && _isAddingItem) {
+      // 延迟检查，避免点击确认按钮时立即收起
+      Future.delayed(const Duration(milliseconds: 200), () {
+        if (!_addItemFocusNode.hasFocus && mounted && _addItemController.text.trim().isEmpty) {
+          setState(() => _isAddingItem = false);
+        }
+      });
+    }
   }
 
   @override
   void dispose() {
+    _addItemFocusNode.removeListener(_onAddItemFocusChange);
     _addItemController.dispose();
     _addItemFocusNode.dispose();
     _titleController.dispose();

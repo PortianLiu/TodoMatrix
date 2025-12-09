@@ -30,6 +30,9 @@ dependencies:
   # 窗口管理
   window_manager: ^0.4.0
 
+  # 路径提供
+  path_provider: ^2.1.1
+
 dev_dependencies:
   flutter_test:
     sdk: flutter

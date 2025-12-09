@@ -30,25 +30,36 @@ void main() async {
   );
 }
 
+/// 从十六进制字符串解析颜色
+Color hexToColor(String hex) {
+  hex = hex.replaceAll('#', '');
+  if (hex.length == 6) {
+    hex = 'FF$hex';
+  }
+  return Color(int.parse(hex, radix: 16));
+}
+
 /// TodoMatrix 主应用
 class TodoMatrixApp extends ConsumerWidget {
   const TodoMatrixApp({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    // 监听主题模式变化
+    // 监听主题模式和主题色变化
     final themeMode = ref.watch(themeModeProvider);
+    final settings = ref.watch(appSettingsProvider);
+    final seedColor = hexToColor(settings.themeColor);
 
     return MaterialApp(
       title: 'TodoMatrix',
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(seedColor: Colors.blue),
+        colorScheme: ColorScheme.fromSeed(seedColor: seedColor),
         useMaterial3: true,
       ),
       darkTheme: ThemeData(
         colorScheme: ColorScheme.fromSeed(
-          seedColor: Colors.blue,
+          seedColor: seedColor,
           brightness: Brightness.dark,
         ),
         useMaterial3: true,

@@ -16,6 +16,7 @@ TodoList _$TodoListFromJson(Map<String, dynamic> json) => TodoList(
       createdAt: DateTime.parse(json['createdAt'] as String),
       updatedAt: DateTime.parse(json['updatedAt'] as String),
       sortOrder: (json['sortOrder'] as num).toInt(),
+      backgroundColor: json['backgroundColor'] as String?,
     );
 
 Map<String, dynamic> _$TodoListToJson(TodoList instance) => <String, dynamic>{
@@ -25,4 +26,5 @@ Map<String, dynamic> _$TodoListToJson(TodoList instance) => <String, dynamic>{
       'createdAt': instance.createdAt.toIso8601String(),
       'updatedAt': instance.updatedAt.toIso8601String(),
       'sortOrder': instance.sortOrder,
+      'backgroundColor': instance.backgroundColor,
     };

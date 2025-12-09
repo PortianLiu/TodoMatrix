@@ -79,12 +79,49 @@ class LayoutSettings {
   int get hashCode => Object.hash(columnsPerRow, Object.hashAll(listOrder));
 }
 
+/// 预设主题色
+class ThemeColors {
+  static const String defaultColor = '9999ff';
+  
+  static const List<String> presetColors = [
+    '9999ff', // 淡紫色（默认）
+    'ff6b6b', // 珊瑚红
+    '4ecdc4', // 青绿色
+    'ffe66d', // 明黄色
+    '95e1d3', // 薄荷绿
+    'dda0dd', // 梅红色
+    '87ceeb', // 天蓝色
+    'f0e68c', // 卡其色
+    'ffa07a', // 浅鲑鱼色
+    'b0c4de', // 浅钢蓝
+  ];
+}
+
+/// 预设列表底色
+class ListColors {
+  static const List<String> presetColors = [
+    'ffffff', // 白色（默认）
+    'fff3e0', // 浅橙
+    'e3f2fd', // 浅蓝
+    'f3e5f5', // 浅紫
+    'e8f5e9', // 浅绿
+    'fff8e1', // 浅黄
+    'fce4ec', // 浅粉
+    'e0f7fa', // 浅青
+    'f5f5f5', // 浅灰
+    'ede7f6', // 淡紫
+  ];
+}
+
 /// 应用设置
 @JsonSerializable()
 class AppSettings {
   /// 主题模式
   @ThemeModeConverter()
   final ThemeMode themeMode;
+
+  /// 自定义主题色（十六进制，不含#）
+  final String themeColor;
 
   /// 是否启用同步
   final bool syncEnabled;
@@ -106,6 +143,7 @@ class AppSettings {
 
   const AppSettings({
     this.themeMode = ThemeMode.system,
+    this.themeColor = '9999ff',
     this.syncEnabled = false,
     this.deviceName = 'My Device',
     this.customDataPath,
@@ -121,6 +159,7 @@ class AppSettings {
 
   AppSettings copyWith({
     ThemeMode? themeMode,
+    String? themeColor,
     bool? syncEnabled,
     String? deviceName,
     String? customDataPath,
@@ -131,6 +170,7 @@ class AppSettings {
   }) {
     return AppSettings(
       themeMode: themeMode ?? this.themeMode,
+      themeColor: themeColor ?? this.themeColor,
       syncEnabled: syncEnabled ?? this.syncEnabled,
       deviceName: deviceName ?? this.deviceName,
       customDataPath:
@@ -146,6 +186,7 @@ class AppSettings {
     if (identical(this, other)) return true;
     return other is AppSettings &&
         other.themeMode == themeMode &&
+        other.themeColor == themeColor &&
         other.syncEnabled == syncEnabled &&
         other.deviceName == deviceName &&
         other.customDataPath == customDataPath &&
@@ -158,6 +199,7 @@ class AppSettings {
   int get hashCode {
     return Object.hash(
       themeMode,
+      themeColor,
       syncEnabled,
       deviceName,
       customDataPath,

@@ -69,23 +69,10 @@ class _TodoItemWidgetState extends ConsumerState<TodoItemWidget> {
   }
 
   Widget _buildLeading() {
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        // 拖拽手柄
-        Icon(
-          Icons.drag_indicator,
-          color: Theme.of(context).colorScheme.outline.withValues(alpha: 0.5),
-          size: 16,
-        ),
-        const SizedBox(width: 4),
-        // 完成状态复选框
-        Checkbox(
-          value: widget.item.isCompleted,
-          onChanged: (_) => _toggleCompleted(),
-          visualDensity: VisualDensity.compact,
-        ),
-      ],
+    return Icon(
+      Icons.drag_indicator,
+      color: Theme.of(context).colorScheme.outline.withValues(alpha: 0.5),
+      size: 16,
     );
   }
 

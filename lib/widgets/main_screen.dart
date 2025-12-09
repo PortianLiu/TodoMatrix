@@ -156,13 +156,9 @@ class _MainScreenState extends ConsumerState<MainScreen> {
   }
 
   Widget _buildListCard(dynamic list, int index, int columns) {
-    // 计算卡片宽度
     return Padding(
       padding: const EdgeInsets.only(bottom: 16),
-      child: TodoListWidget(
-        listId: list.id,
-        onDelete: () => _deleteList(list.id, list.title),
-      ),
+      child: TodoListWidget(listId: list.id),
     );
   }
 
@@ -178,26 +174,4 @@ class _MainScreenState extends ConsumerState<MainScreen> {
     );
   }
 
-  void _deleteList(String listId, String title) {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('删除列表'),
-        content: Text('确定要删除列表"$title"吗？\n此操作不可撤销。'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('取消'),
-          ),
-          FilledButton(
-            onPressed: () {
-              ref.read(appDataProvider.notifier).deleteList(listId);
-              Navigator.pop(context);
-            },
-            child: const Text('删除'),
-          ),
-        ],
-      ),
-    );
-  }
 }

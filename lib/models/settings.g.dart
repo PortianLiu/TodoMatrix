@@ -25,6 +25,7 @@ AppSettings _$AppSettingsFromJson(Map<String, dynamic> json) => AppSettings(
       themeMode: json['themeMode'] == null
           ? ThemeMode.system
           : const ThemeModeConverter().fromJson(json['themeMode'] as String),
+      themeColor: json['themeColor'] as String? ?? '9999ff',
       syncEnabled: json['syncEnabled'] as bool? ?? false,
       deviceName: json['deviceName'] as String? ?? 'My Device',
       customDataPath: json['customDataPath'] as String?,
@@ -36,6 +37,7 @@ AppSettings _$AppSettingsFromJson(Map<String, dynamic> json) => AppSettings(
 Map<String, dynamic> _$AppSettingsToJson(AppSettings instance) =>
     <String, dynamic>{
       'themeMode': const ThemeModeConverter().toJson(instance.themeMode),
+      'themeColor': instance.themeColor,
       'syncEnabled': instance.syncEnabled,
       'deviceName': instance.deviceName,
       'customDataPath': instance.customDataPath,

@@ -2,19 +2,26 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../models/models.dart';
+import '../models/settings.dart';
 import '../providers/todo_provider.dart';
 import 'todo_item_widget.dart';
 
+/// 从十六进制字符串解析颜色
+Color _hexToColor(String hex) {
+  hex = hex.replaceAll('#', '');
+  if (hex.length == 6) {
+    hex = 'FF$hex';
+  }
+  return Color(int.parse(hex, radix: 16));
+}
+
 /// 待办列表组件
-/// 显示单个列表，支持添加/编辑/删除待办项
 class TodoListWidget extends ConsumerStatefulWidget {
   final String listId;
-  final VoidCallback? onDelete;
 
   const TodoListWidget({
     super.key,
     required this.listId,
-    this.onDelete,
   });
 
   @override
@@ -25,6 +32,7 @@ class _TodoListWidgetState extends ConsumerState<TodoListWidget> {
   final _addItemController = TextEditingController();
   final _addItemFocusNode = FocusNode();
   bool _isEditingTitle = false;
+  bool _isAddingItem = false;
   late TextEditingController _titleController;
 
   @override
@@ -44,13 +52,16 @@ class _TodoListWidgetState extends ConsumerState<TodoListWidget> {
   @override
   Widget build(BuildContext context) {
     final list = ref.watch(todoListProvider(widget.listId));
+    if (list == null) return const SizedBox.shrink();
 
-    if (list == null) {
-      return const SizedBox.shrink();
-    }
+    // 获取列表底色
+    final bgColor = list.backgroundColor != null
+        ? _hexToColor(list.backgroundColor!)
+        : Theme.of(context).cardColor;
 
     return Card(
       clipBehavior: Clip.antiAlias,
+      color: bgColor,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         mainAxisSize: MainAxisSize.min,
@@ -58,15 +69,15 @@ class _TodoListWidgetState extends ConsumerState<TodoListWidget> {
           _buildHeader(list),
           const Divider(height: 1),
           _buildItemsList(list),
-          _buildAddItemField(list),
+          if (_isAddingItem) _buildAddItemField(),
         ],
       ),
     );
   }
 
+
   Widget _buildHeader(TodoList list) {
     return Container(
-      color: Theme.of(context).colorScheme.primaryContainer.withValues(alpha: 0.3),
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       child: Row(
         children: [
@@ -148,14 +159,113 @@ class _TodoListWidgetState extends ConsumerState<TodoListWidget> {
               ),
         ),
         const SizedBox(width: 4),
-        // 删除按钮
+        // 添加按钮
         IconButton(
-          icon: const Icon(Icons.delete_outline, size: 20),
-          tooltip: '删除列表',
-          onPressed: widget.onDelete,
+          icon: const Icon(Icons.add, size: 20),
+          tooltip: '添加待办项',
+          onPressed: _showAddItemField,
           visualDensity: VisualDensity.compact,
         ),
+        // 更多操作（设置底色）
+        PopupMenuButton<String>(
+          icon: Icon(
+            Icons.more_vert,
+            size: 20,
+            color: Theme.of(context).colorScheme.outline,
+          ),
+          tooltip: '更多',
+          itemBuilder: (context) => [
+            const PopupMenuItem(value: 'color', child: Text('设置底色')),
+            const PopupMenuDivider(),
+            const PopupMenuItem(
+              value: 'delete',
+              child: Text('删除列表', style: TextStyle(color: Colors.red)),
+            ),
+          ],
+          onSelected: (value) {
+            if (value == 'color') {
+              _showColorPicker(list);
+            } else if (value == 'delete') {
+              _confirmDelete(list);
+            }
+          },
+        ),
       ],
+    );
+  }
+
+  void _showAddItemField() {
+    setState(() => _isAddingItem = true);
+    // 延迟聚焦，等待 widget 构建完成
+    Future.delayed(const Duration(milliseconds: 100), () {
+      _addItemFocusNode.requestFocus();
+    });
+  }
+
+  void _showColorPicker(TodoList list) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('选择底色'),
+        content: Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: ListColors.presetColors.map((colorHex) {
+            final color = _hexToColor(colorHex);
+            final isSelected = list.backgroundColor == colorHex;
+            return GestureDetector(
+              onTap: () {
+                ref.read(appDataProvider.notifier).updateListColor(
+                      widget.listId,
+                      colorHex == 'ffffff' ? null : colorHex,
+                    );
+                Navigator.pop(context);
+              },
+              child: Container(
+                width: 40,
+                height: 40,
+                decoration: BoxDecoration(
+                  color: color,
+                  border: Border.all(
+                    color: isSelected
+                        ? Theme.of(context).colorScheme.primary
+                        : Colors.grey.shade300,
+                    width: isSelected ? 3 : 1,
+                  ),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: isSelected
+                    ? Icon(Icons.check,
+                        color: Theme.of(context).colorScheme.primary, size: 20)
+                    : null,
+              ),
+            );
+          }).toList(),
+        ),
+      ),
+    );
+  }
+
+  void _confirmDelete(TodoList list) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('删除列表'),
+        content: Text('确定要删除列表"${list.title}"吗？\n此操作不可撤销。'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            onPressed: () {
+              ref.read(appDataProvider.notifier).deleteList(widget.listId);
+              Navigator.pop(context);
+            },
+            child: const Text('删除'),
+          ),
+        ],
+      ),
     );
   }
 
@@ -173,7 +283,6 @@ class _TodoListWidgetState extends ConsumerState<TodoListWidget> {
       );
     }
 
-    // 按 sortOrder 排序
     final sortedItems = [...list.items]
       ..sort((a, b) => a.sortOrder.compareTo(b.sortOrder));
 
@@ -204,14 +313,14 @@ class _TodoListWidgetState extends ConsumerState<TodoListWidget> {
     );
   }
 
-  Widget _buildAddItemField(TodoList list) {
+  Widget _buildAddItemField() {
     return Padding(
       padding: const EdgeInsets.all(8),
       child: TextField(
         controller: _addItemController,
         focusNode: _addItemFocusNode,
         decoration: InputDecoration(
-          hintText: '添加待办项...',
+          hintText: '输入待办项内容...',
           isDense: true,
           contentPadding: const EdgeInsets.symmetric(
             horizontal: 12,
@@ -220,9 +329,21 @@ class _TodoListWidgetState extends ConsumerState<TodoListWidget> {
           border: OutlineInputBorder(
             borderRadius: BorderRadius.circular(8),
           ),
-          suffixIcon: IconButton(
-            icon: const Icon(Icons.add),
-            onPressed: _addItem,
+          suffixIcon: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              IconButton(
+                icon: const Icon(Icons.check),
+                onPressed: _addItem,
+              ),
+              IconButton(
+                icon: const Icon(Icons.close),
+                onPressed: () {
+                  _addItemController.clear();
+                  setState(() => _isAddingItem = false);
+                },
+              ),
+            ],
           ),
         ),
         onSubmitted: (_) => _addItem(),

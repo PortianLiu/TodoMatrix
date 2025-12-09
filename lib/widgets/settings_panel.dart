@@ -1,10 +1,20 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../models/settings.dart';
 import '../providers/layout_provider.dart';
 import '../providers/sync_provider.dart';
 import '../providers/todo_provider.dart';
 import '../services/discovery_service.dart';
+
+/// 从十六进制字符串解析颜色
+Color _hexToColor(String hex) {
+  hex = hex.replaceAll('#', '');
+  if (hex.length == 6) {
+    hex = 'FF$hex';
+  }
+  return Color(int.parse(hex, radix: 16));
+}
 
 /// 设置面板
 class SettingsPanel extends ConsumerWidget {
@@ -24,6 +34,7 @@ class SettingsPanel extends ConsumerWidget {
           // 主题设置
           _buildSectionHeader(context, '外观'),
           _buildThemeTile(context, ref, settings.themeMode),
+          _buildThemeColorTile(context, ref, settings.themeColor),
           const Divider(),
 
           // 布局设置
@@ -116,6 +127,66 @@ class SettingsPanel extends ConsumerWidget {
           Navigator.of(context).pop();
         }
       },
+    );
+  }
+
+  /// 构建主题色设置项
+  Widget _buildThemeColorTile(BuildContext context, WidgetRef ref, String currentColor) {
+    return ListTile(
+      leading: Container(
+        width: 24,
+        height: 24,
+        decoration: BoxDecoration(
+          color: _hexToColor(currentColor),
+          shape: BoxShape.circle,
+          border: Border.all(color: Colors.grey.shade300),
+        ),
+      ),
+      title: const Text('主题色'),
+      subtitle: Text('#$currentColor'),
+      trailing: const Icon(Icons.chevron_right),
+      onTap: () => _showThemeColorDialog(context, ref, currentColor),
+    );
+  }
+
+  /// 显示主题色选择对话框
+  void _showThemeColorDialog(BuildContext context, WidgetRef ref, String currentColor) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('选择主题色'),
+        content: Wrap(
+          spacing: 12,
+          runSpacing: 12,
+          children: ThemeColors.presetColors.map((colorHex) {
+            final color = _hexToColor(colorHex);
+            final isSelected = currentColor == colorHex;
+            return GestureDetector(
+              onTap: () {
+                ref.read(appDataProvider.notifier).setThemeColor(colorHex);
+                Navigator.pop(context);
+              },
+              child: Container(
+                width: 48,
+                height: 48,
+                decoration: BoxDecoration(
+                  color: color,
+                  shape: BoxShape.circle,
+                  border: Border.all(
+                    color: isSelected
+                        ? Theme.of(context).colorScheme.primary
+                        : Colors.grey.shade300,
+                    width: isSelected ? 3 : 1,
+                  ),
+                ),
+                child: isSelected
+                    ? const Icon(Icons.check, color: Colors.white, size: 24)
+                    : null,
+              ),
+            );
+          }).toList(),
+        ),
+      ),
     );
   }
 

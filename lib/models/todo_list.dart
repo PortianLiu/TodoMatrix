@@ -25,6 +25,9 @@ class TodoList {
   /// 排序顺序
   final int sortOrder;
 
+  /// 列表底色（十六进制，不含#）
+  final String? backgroundColor;
+
   const TodoList({
     required this.id,
     required this.title,
@@ -32,6 +35,7 @@ class TodoList {
     required this.createdAt,
     required this.updatedAt,
     required this.sortOrder,
+    this.backgroundColor,
   });
 
   /// 从 JSON 创建 TodoList
@@ -48,6 +52,8 @@ class TodoList {
     DateTime? createdAt,
     DateTime? updatedAt,
     int? sortOrder,
+    String? backgroundColor,
+    bool clearBackgroundColor = false,
   }) {
     return TodoList(
       id: id ?? this.id,
@@ -56,6 +62,7 @@ class TodoList {
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
       sortOrder: sortOrder ?? this.sortOrder,
+      backgroundColor: clearBackgroundColor ? null : (backgroundColor ?? this.backgroundColor),
     );
   }
 
@@ -68,6 +75,7 @@ class TodoList {
         other.createdAt != createdAt ||
         other.updatedAt != updatedAt ||
         other.sortOrder != sortOrder ||
+        other.backgroundColor != backgroundColor ||
         other.items.length != items.length) {
       return false;
     }
@@ -87,6 +95,7 @@ class TodoList {
       createdAt,
       updatedAt,
       sortOrder,
+      backgroundColor,
     );
   }
 

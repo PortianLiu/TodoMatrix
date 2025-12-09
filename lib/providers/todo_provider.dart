@@ -113,6 +113,24 @@ class AppDataNotifier extends StateNotifier<AppData> {
     _triggerAutoSave();
   }
 
+  /// 更新列表底色
+  void updateListColor(String listId, String? colorHex) {
+    final listIndex = state.lists.indexWhere((l) => l.id == listId);
+    if (listIndex == -1) return;
+
+    final updatedList = state.lists[listIndex].copyWith(
+      backgroundColor: colorHex,
+      clearBackgroundColor: colorHex == null,
+      updatedAt: DateTime.now(),
+    );
+
+    final newLists = [...state.lists];
+    newLists[listIndex] = updatedList;
+
+    state = _updateLastModified(state.copyWith(lists: newLists));
+    _triggerAutoSave();
+  }
+
   /// 移动列表（重新排序）
   void moveList(int oldIndex, int newIndex) {
     if (oldIndex == newIndex) return;
@@ -383,6 +401,13 @@ class AppDataNotifier extends StateNotifier<AppData> {
   /// 设置主题模式
   void setThemeMode(ThemeMode themeMode) {
     final newSettings = state.settings.copyWith(themeMode: themeMode);
+    state = _updateLastModified(state.copyWith(settings: newSettings));
+    _triggerAutoSave();
+  }
+
+  /// 设置主题色
+  void setThemeColor(String colorHex) {
+    final newSettings = state.settings.copyWith(themeColor: colorHex);
     state = _updateLastModified(state.copyWith(settings: newSettings));
     _triggerAutoSave();
   }

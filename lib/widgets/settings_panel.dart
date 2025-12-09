@@ -1,3 +1,7 @@
+import 'dart:io';
+
+import 'package:file_picker/file_picker.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -6,6 +10,7 @@ import '../providers/layout_provider.dart';
 import '../providers/sync_provider.dart';
 import '../providers/todo_provider.dart';
 import '../services/discovery_service.dart';
+import '../services/window_service.dart';
 
 /// 从十六进制字符串解析颜色
 Color _hexToColor(String hex) {
@@ -49,6 +54,15 @@ class SettingsPanel extends ConsumerWidget {
           if (settings.syncEnabled) ...[
             _buildSyncStatusTile(context, ref),
             _buildDeviceListTile(context, ref),
+          ],
+          const Divider(),
+
+          // Windows 高级功能（仅 Windows 平台显示）
+          if (!kIsWeb && Platform.isWindows) ...[
+            _buildSectionHeader(context, 'Windows 功能'),
+            _buildPinToDesktopTile(context, ref, settings.pinToDesktop),
+            _buildEdgeHideTile(context, ref, settings.edgeHideEnabled),
+            _buildCustomDataPathTile(context, ref, settings.customDataPath),
           ],
         ],
       ),
@@ -374,5 +388,156 @@ class SettingsPanel extends ConsumerWidget {
         child: const Text('同步'),
       ),
     );
+  }
+
+  /// 构建钉在桌面设置项
+  Widget _buildPinToDesktopTile(BuildContext context, WidgetRef ref, bool enabled) {
+    return SwitchListTile(
+      secondary: const Icon(Icons.push_pin_outlined),
+      title: const Text('钉在桌面'),
+      subtitle: const Text('窗口固定在桌面最底层，不遮挡其他窗口'),
+      value: enabled,
+      onChanged: (value) async {
+        final currentSettings = ref.read(appSettingsProvider);
+        ref.read(appDataProvider.notifier).updateSettings(
+              currentSettings.copyWith(pinToDesktop: value),
+            );
+        // 应用窗口设置
+        await WindowService.instance.setPinToDesktop(value);
+      },
+    );
+  }
+
+  /// 构建贴边隐藏设置项
+  Widget _buildEdgeHideTile(BuildContext context, WidgetRef ref, bool enabled) {
+    return SwitchListTile(
+      secondary: const Icon(Icons.border_left_outlined),
+      title: const Text('贴边隐藏'),
+      subtitle: const Text('窗口贴边后自动隐藏，鼠标靠近时滑出'),
+      value: enabled,
+      onChanged: (value) async {
+        final currentSettings = ref.read(appSettingsProvider);
+        ref.read(appDataProvider.notifier).updateSettings(
+              currentSettings.copyWith(edgeHideEnabled: value),
+            );
+        // 应用窗口设置
+        await WindowService.instance.setEdgeHide(value);
+      },
+    );
+  }
+
+  /// 构建自定义数据路径设置项
+  Widget _buildCustomDataPathTile(BuildContext context, WidgetRef ref, String? currentPath) {
+    return ListTile(
+      leading: const Icon(Icons.folder_outlined),
+      title: const Text('数据存储路径'),
+      subtitle: Text(currentPath ?? '默认路径（%APPDATA%/TodoMatrix）'),
+      trailing: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (currentPath != null)
+            IconButton(
+              icon: const Icon(Icons.clear),
+              tooltip: '恢复默认',
+              onPressed: () => _resetDataPath(context, ref),
+            ),
+          IconButton(
+            icon: const Icon(Icons.folder_open),
+            tooltip: '选择文件夹',
+            onPressed: () => _selectDataPath(context, ref),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// 选择数据路径
+  Future<void> _selectDataPath(BuildContext context, WidgetRef ref) async {
+    final result = await FilePicker.platform.getDirectoryPath(
+      dialogTitle: '选择数据存储路径',
+    );
+
+    if (result != null) {
+      // 确认对话框
+      final confirmed = await showDialog<bool>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('更改数据路径'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text('确定要将数据存储路径更改为：'),
+              const SizedBox(height: 8),
+              Text(
+                result,
+                style: const TextStyle(fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 16),
+              const Text(
+                '注意：更改路径后需要重启应用才能生效。\n现有数据不会自动迁移。',
+                style: TextStyle(color: Colors.orange),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('取消'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text('确定'),
+            ),
+          ],
+        ),
+      );
+
+      if (confirmed == true) {
+        final currentSettings = ref.read(appSettingsProvider);
+        ref.read(appDataProvider.notifier).updateSettings(
+              currentSettings.copyWith(customDataPath: result),
+            );
+        // 提示重启
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('数据路径已更改，请重启应用以生效')),
+          );
+        }
+      }
+    }
+  }
+
+  /// 重置数据路径
+  Future<void> _resetDataPath(BuildContext context, WidgetRef ref) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('恢复默认路径'),
+        content: const Text('确定要恢复默认数据存储路径吗？\n更改后需要重启应用才能生效。'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('确定'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed == true) {
+      final currentSettings = ref.read(appSettingsProvider);
+      ref.read(appDataProvider.notifier).updateSettings(
+            currentSettings.copyWith(clearCustomDataPath: true),
+          );
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('已恢复默认路径，请重启应用以生效')),
+        );
+      }
+    }
   }
 }

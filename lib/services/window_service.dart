@@ -1,5 +1,6 @@
+import 'dart:async';
 import 'dart:io';
-import 'dart:ui' show Size, Color;
+import 'dart:ui' show Size, Offset;
 
 import 'package:flutter/foundation.dart';
 import 'package:system_tray/system_tray.dart';
@@ -22,6 +23,14 @@ class WindowEvent {
   WindowEvent(this.type) : timestamp = DateTime.now();
 }
 
+/// 贴边方向
+enum EdgeDirection {
+  none,
+  left,
+  right,
+  top,
+}
+
 /// 窗口服务 - 管理 Windows 平台的窗口和系统托盘
 class WindowService with WindowListener {
   static WindowService? _instance;
@@ -33,6 +42,17 @@ class WindowService with WindowListener {
   bool _isInitialized = false;
   bool _isMinimizedToTray = false;
 
+  /// 钉在桌面状态
+  bool _isPinnedToDesktop = false;
+
+  /// 贴边隐藏状态
+  bool _edgeHideEnabled = false;
+  EdgeDirection _currentEdge = EdgeDirection.none;
+  bool _isHiddenAtEdge = false;
+  Timer? _edgeCheckTimer;
+  Offset? _lastWindowPosition;
+  Size? _lastWindowSize;
+
   /// 回调函数
   void Function()? onTrayIconClick;
   void Function()? onShowWindow;
@@ -43,6 +63,15 @@ class WindowService with WindowListener {
 
   /// 是否已最小化到托盘
   bool get isMinimizedToTray => _isMinimizedToTray;
+
+  /// 是否钉在桌面
+  bool get isPinnedToDesktop => _isPinnedToDesktop;
+
+  /// 是否启用贴边隐藏
+  bool get edgeHideEnabled => _edgeHideEnabled;
+
+  /// 是否已隐藏在边缘
+  bool get isHiddenAtEdge => _isHiddenAtEdge;
 
   /// 初始化窗口服务
   Future<void> initialize() async {
@@ -146,8 +175,126 @@ class WindowService with WindowListener {
   Future<void> destroy() async {
     if (!isWindows) return;
 
+    _edgeCheckTimer?.cancel();
     await _systemTray.destroy();
     windowManager.removeListener(this);
+  }
+
+  /// 设置钉在桌面
+  Future<void> setPinToDesktop(bool enabled) async {
+    if (!isWindows) return;
+
+    _isPinnedToDesktop = enabled;
+    if (enabled) {
+      // 设置窗口始终在底层（桌面级别）
+      await windowManager.setAlwaysOnBottom(true);
+      await windowManager.setSkipTaskbar(true);
+    } else {
+      // 恢复正常窗口
+      await windowManager.setAlwaysOnBottom(false);
+      await windowManager.setSkipTaskbar(false);
+    }
+  }
+
+  /// 设置贴边隐藏
+  Future<void> setEdgeHide(bool enabled) async {
+    if (!isWindows) return;
+
+    _edgeHideEnabled = enabled;
+    if (enabled) {
+      // 启动边缘检测定时器
+      _startEdgeCheckTimer();
+    } else {
+      // 停止边缘检测
+      _edgeCheckTimer?.cancel();
+      _edgeCheckTimer = null;
+      // 如果当前隐藏在边缘，恢复窗口
+      if (_isHiddenAtEdge) {
+        await _showFromEdge();
+      }
+    }
+  }
+
+  /// 启动边缘检测定时器
+  void _startEdgeCheckTimer() {
+    _edgeCheckTimer?.cancel();
+    _edgeCheckTimer = Timer.periodic(
+      const Duration(milliseconds: 100),
+      (_) => _checkEdgeAndMouse(),
+    );
+  }
+
+  /// 检测窗口边缘和鼠标位置
+  Future<void> _checkEdgeAndMouse() async {
+    if (!_edgeHideEnabled) return;
+
+    final position = await windowManager.getPosition();
+    final size = await windowManager.getSize();
+
+    // 检测窗口是否贴边
+    final screenWidth = 1920.0; // TODO: 获取实际屏幕尺寸
+    const edgeThreshold = 10.0;
+
+    EdgeDirection newEdge = EdgeDirection.none;
+    if (position.dx <= edgeThreshold) {
+      newEdge = EdgeDirection.left;
+    } else if (position.dx + size.width >= screenWidth - edgeThreshold) {
+      newEdge = EdgeDirection.right;
+    } else if (position.dy <= edgeThreshold) {
+      newEdge = EdgeDirection.top;
+    }
+
+    if (newEdge != EdgeDirection.none && !_isHiddenAtEdge) {
+      _currentEdge = newEdge;
+      _lastWindowPosition = position;
+      _lastWindowSize = size;
+    }
+
+    // 如果窗口失去焦点且贴边，则隐藏
+    final isFocused = await windowManager.isFocused();
+    if (!isFocused && _currentEdge != EdgeDirection.none && !_isHiddenAtEdge) {
+      await _hideToEdge();
+    }
+  }
+
+  /// 隐藏到边缘
+  Future<void> _hideToEdge() async {
+    if (_currentEdge == EdgeDirection.none || _lastWindowSize == null) return;
+
+    _isHiddenAtEdge = true;
+    final size = _lastWindowSize!;
+    const visiblePart = 5.0; // 露出的部分
+
+    switch (_currentEdge) {
+      case EdgeDirection.left:
+        await windowManager.setPosition(Offset(-size.width + visiblePart, _lastWindowPosition!.dy));
+        break;
+      case EdgeDirection.right:
+        final screenWidth = 1920.0; // TODO: 获取实际屏幕尺寸
+        await windowManager.setPosition(Offset(screenWidth - visiblePart, _lastWindowPosition!.dy));
+        break;
+      case EdgeDirection.top:
+        await windowManager.setPosition(Offset(_lastWindowPosition!.dx, -size.height + visiblePart));
+        break;
+      case EdgeDirection.none:
+        break;
+    }
+  }
+
+  /// 从边缘显示
+  Future<void> _showFromEdge() async {
+    if (!_isHiddenAtEdge || _lastWindowPosition == null) return;
+
+    _isHiddenAtEdge = false;
+    await windowManager.setPosition(_lastWindowPosition!);
+    await windowManager.focus();
+  }
+
+  /// 鼠标进入边缘区域时调用（需要从外部触发）
+  Future<void> onMouseEnterEdge() async {
+    if (_edgeHideEnabled && _isHiddenAtEdge) {
+      await _showFromEdge();
+    }
   }
 
   // WindowListener 回调
@@ -168,7 +315,12 @@ class WindowService with WindowListener {
   }
 
   @override
-  void onWindowFocus() {}
+  void onWindowFocus() {
+    // 窗口获得焦点时，如果隐藏在边缘则显示
+    if (_isHiddenAtEdge) {
+      _showFromEdge();
+    }
+  }
 
   @override
   void onWindowBlur() {}
@@ -189,10 +341,24 @@ class WindowService with WindowListener {
   void onWindowEvent(String eventName) {}
 
   @override
-  void onWindowMoved() {}
+  void onWindowMoved() {
+    // 窗口移动后更新位置记录
+    if (_edgeHideEnabled && !_isHiddenAtEdge) {
+      windowManager.getPosition().then((pos) {
+        _lastWindowPosition = pos;
+      });
+    }
+  }
 
   @override
-  void onWindowResized() {}
+  void onWindowResized() {
+    // 窗口大小改变后更新记录
+    if (_edgeHideEnabled && !_isHiddenAtEdge) {
+      windowManager.getSize().then((size) {
+        _lastWindowSize = size;
+      });
+    }
+  }
 
   @override
   void onWindowEnterFullScreen() {}

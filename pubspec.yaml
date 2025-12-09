@@ -33,6 +33,9 @@ dependencies:
   # 路径提供
   path_provider: ^2.1.1
 
+  # 文件选择器
+  file_picker: ^8.0.0
+
 dev_dependencies:
   flutter_test:
     sdk: flutter

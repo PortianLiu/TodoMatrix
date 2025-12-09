@@ -50,19 +50,57 @@ class TodoMatrixApp extends ConsumerWidget {
     final settings = ref.watch(appSettingsProvider);
     final seedColor = hexToColor(settings.themeColor);
 
+    final lightColorScheme = ColorScheme.fromSeed(
+      seedColor: seedColor,
+      brightness: Brightness.light,
+    );
+    final darkColorScheme = ColorScheme.fromSeed(
+      seedColor: seedColor,
+      brightness: Brightness.dark,
+    );
+
     return MaterialApp(
       title: 'TodoMatrix',
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(seedColor: seedColor),
+        colorScheme: lightColorScheme,
         useMaterial3: true,
+        scaffoldBackgroundColor: lightColorScheme.surface,
+        appBarTheme: AppBarTheme(
+          backgroundColor: lightColorScheme.primaryContainer,
+          foregroundColor: lightColorScheme.onPrimaryContainer,
+          elevation: 0,
+        ),
+        cardTheme: CardThemeData(
+          elevation: 2,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        ),
+        filledButtonTheme: FilledButtonThemeData(
+          style: FilledButton.styleFrom(
+            backgroundColor: lightColorScheme.primary,
+            foregroundColor: lightColorScheme.onPrimary,
+          ),
+        ),
       ),
       darkTheme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(
-          seedColor: seedColor,
-          brightness: Brightness.dark,
-        ),
+        colorScheme: darkColorScheme,
         useMaterial3: true,
+        scaffoldBackgroundColor: darkColorScheme.surface,
+        appBarTheme: AppBarTheme(
+          backgroundColor: darkColorScheme.primaryContainer,
+          foregroundColor: darkColorScheme.onPrimaryContainer,
+          elevation: 0,
+        ),
+        cardTheme: CardThemeData(
+          elevation: 2,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        ),
+        filledButtonTheme: FilledButtonThemeData(
+          style: FilledButton.styleFrom(
+            backgroundColor: darkColorScheme.primary,
+            foregroundColor: darkColorScheme.onPrimary,
+          ),
+        ),
       ),
       themeMode: themeMode,
       home: const MainScreen(),

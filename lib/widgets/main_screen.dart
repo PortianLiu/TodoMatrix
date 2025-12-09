@@ -7,7 +7,6 @@ import 'settings_panel.dart';
 import 'todo_list_widget.dart';
 
 /// 主界面
-/// 显示所有待办列表的网格布局，支持拖拽排序
 class MainScreen extends ConsumerStatefulWidget {
   const MainScreen({super.key});
 
@@ -34,27 +33,29 @@ class _MainScreenState extends ConsumerState<MainScreen> {
   @override
   Widget build(BuildContext context) {
     if (_isLoading) {
-      return const Scaffold(
-        body: Center(child: CircularProgressIndicator()),
+      return Scaffold(
+        backgroundColor: Theme.of(context).colorScheme.surface,
+        body: const Center(child: CircularProgressIndicator()),
       );
     }
 
     return Scaffold(
+      backgroundColor: Theme.of(context).colorScheme.surface,
       appBar: AppBar(
-        title: const Text('TodoMatrix'),
+        backgroundColor: Theme.of(context).colorScheme.primaryContainer,
+        title: Text(
+          'TodoMatrix',
+          style: TextStyle(color: Theme.of(context).colorScheme.onPrimaryContainer),
+        ),
         actions: [
-          // 列数调整
           _buildColumnsSelector(),
-          const SizedBox(width: 8),
-          // 添加列表按钮
           IconButton(
-            icon: const Icon(Icons.add),
+            icon: Icon(Icons.add, color: Theme.of(context).colorScheme.onPrimaryContainer),
             tooltip: '新建列表',
             onPressed: _createNewList,
           ),
-          // 设置按钮
           IconButton(
-            icon: const Icon(Icons.settings_outlined),
+            icon: Icon(Icons.settings_outlined, color: Theme.of(context).colorScheme.onPrimaryContainer),
             tooltip: '设置',
             onPressed: _openSettings,
           ),
@@ -69,17 +70,23 @@ class _MainScreenState extends ConsumerState<MainScreen> {
     final columns = ref.watch(columnsPerRowProvider);
 
     return PopupMenuButton<int>(
-      icon: const Icon(Icons.grid_view),
+      icon: Icon(Icons.grid_view, color: Theme.of(context).colorScheme.onPrimaryContainer),
       tooltip: '调整列数',
       initialValue: columns,
       onSelected: (value) {
-        ref.read(layoutControllerProvider).setColumnsPerRow(value);
+        ref.read(appDataProvider.notifier).setColumnsPerRow(value);
       },
       itemBuilder: (context) => List.generate(
-        5,
+        6,
         (index) => PopupMenuItem(
           value: index + 1,
-          child: Text('${index + 1} 列'),
+          child: Row(
+            children: [
+              if (columns == index + 1) const Icon(Icons.check, size: 18),
+              if (columns == index + 1) const SizedBox(width: 8),
+              Text('${index + 1} 列'),
+            ],
+          ),
         ),
       ),
     );
@@ -92,18 +99,10 @@ class _MainScreenState extends ConsumerState<MainScreen> {
       return _buildEmptyState();
     }
 
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final preferredColumns = ref.watch(columnsPerRowProvider);
-        final columns = calculateResponsiveColumns(
-          constraints.maxWidth,
-          preferredColumns: preferredColumns,
-        );
-
-        return _buildReorderableGrid(lists, columns);
-      },
-    );
+    final columns = ref.watch(columnsPerRowProvider);
+    return _buildGridView(lists, columns);
   }
+
 
   Widget _buildEmptyState() {
     return Center(
@@ -113,16 +112,16 @@ class _MainScreenState extends ConsumerState<MainScreen> {
           Icon(
             Icons.checklist,
             size: 64,
-            color: Theme.of(context).colorScheme.outline,
+            color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.5),
           ),
           const SizedBox(height: 16),
           Text(
             '还没有待办列表',
             style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                  color: Theme.of(context).colorScheme.outline,
+                  color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.6),
                 ),
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: 16),
           FilledButton.icon(
             onPressed: _createNewList,
             icon: const Icon(Icons.add),
@@ -133,32 +132,50 @@ class _MainScreenState extends ConsumerState<MainScreen> {
     );
   }
 
-  Widget _buildReorderableGrid(List lists, int columns) {
+  Widget _buildGridView(List lists, int columns) {
     return Padding(
-      padding: const EdgeInsets.all(16),
-      child: ReorderableListView.builder(
-        buildDefaultDragHandles: false,
+      padding: const EdgeInsets.all(12),
+      child: GridView.builder(
+        gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+          crossAxisCount: columns,
+          crossAxisSpacing: 12,
+          mainAxisSpacing: 12,
+          childAspectRatio: 0.8, // 调整卡片比例
+        ),
         itemCount: lists.length,
-        onReorder: (oldIndex, newIndex) {
-          if (newIndex > oldIndex) newIndex--;
-          ref.read(appDataProvider.notifier).moveList(oldIndex, newIndex);
-        },
         itemBuilder: (context, index) {
           final list = lists[index];
-          return ReorderableDragStartListener(
-            key: ValueKey(list.id),
-            index: index,
-            child: _buildListCard(list, index, columns),
+          return DragTarget<Map<String, String>>(
+            onAcceptWithDetails: (details) {
+              final data = details.data;
+              if (data['sourceListId'] != list.id) {
+                ref.read(appDataProvider.notifier).moveTodoItemToList(
+                      data['sourceListId']!,
+                      list.id,
+                      data['itemId']!,
+                    );
+              }
+            },
+            onWillAcceptWithDetails: (details) {
+              return details.data['sourceListId'] != list.id;
+            },
+            builder: (context, candidateData, rejectedData) {
+              return Container(
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(12),
+                  border: candidateData.isNotEmpty
+                      ? Border.all(
+                          color: Theme.of(context).colorScheme.primary,
+                          width: 2,
+                        )
+                      : null,
+                ),
+                child: TodoListWidget(listId: list.id),
+              );
+            },
           );
         },
       ),
-    );
-  }
-
-  Widget _buildListCard(dynamic list, int index, int columns) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 16),
-      child: TodoListWidget(listId: list.id),
     );
   }
 
@@ -173,5 +190,4 @@ class _MainScreenState extends ConsumerState<MainScreen> {
       ),
     );
   }
-
 }

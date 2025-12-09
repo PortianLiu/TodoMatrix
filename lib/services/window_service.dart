@@ -56,21 +56,21 @@ class WindowService with WindowListener {
       size: Size(1200, 800),
       minimumSize: Size(400, 300),
       center: true,
-      backgroundColor: Color(0x00000000),
       skipTaskbar: false,
       titleBarStyle: TitleBarStyle.normal,
     );
 
-    await windowManager.waitUntilReadyToShow(windowOptions, () async {
-      await windowManager.show();
-      await windowManager.focus();
-    });
+    await windowManager.waitUntilReadyToShow(windowOptions);
+    await windowManager.show();
+    await windowManager.focus();
 
     // 添加窗口监听器
     windowManager.addListener(this);
 
-    // 初始化系统托盘
-    await _initSystemTray();
+    // 初始化系统托盘（延迟执行，避免阻塞）
+    Future.delayed(const Duration(milliseconds: 500), () {
+      _initSystemTray();
+    });
 
     _isInitialized = true;
   }

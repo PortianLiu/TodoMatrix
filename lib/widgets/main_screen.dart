@@ -1,8 +1,12 @@
+import 'dart:io';
+
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../providers/todo_provider.dart';
 import '../providers/layout_provider.dart';
+import '../services/window_service.dart';
 import 'settings_panel.dart';
 import 'todo_list_widget.dart';
 
@@ -27,6 +31,23 @@ class _MainScreenState extends ConsumerState<MainScreen> {
     await ref.read(appDataProvider.notifier).loadData();
     if (mounted) {
       setState(() => _isLoading = false);
+      // 应用保存的窗口设置（仅 Windows）
+      _applyWindowSettings();
+    }
+  }
+
+  /// 应用保存的窗口设置
+  Future<void> _applyWindowSettings() async {
+    if (kIsWeb || !Platform.isWindows) return;
+
+    final settings = ref.read(appSettingsProvider);
+    // 应用钉在桌面设置
+    if (settings.pinToDesktop) {
+      await WindowService.instance.setPinToDesktop(true);
+    }
+    // 应用贴边隐藏设置
+    if (settings.edgeHideEnabled) {
+      await WindowService.instance.setEdgeHide(true);
     }
   }
 

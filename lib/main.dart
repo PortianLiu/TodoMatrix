@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import 'providers/todo_provider.dart';
 import 'widgets/main_screen.dart';
 
 /// TodoMatrix 应用入口
@@ -13,11 +14,14 @@ void main() {
 }
 
 /// TodoMatrix 主应用
-class TodoMatrixApp extends StatelessWidget {
+class TodoMatrixApp extends ConsumerWidget {
   const TodoMatrixApp({super.key});
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    // 监听主题模式变化
+    final themeMode = ref.watch(themeModeProvider);
+
     return MaterialApp(
       title: 'TodoMatrix',
       debugShowCheckedModeBanner: false,
@@ -32,7 +36,7 @@ class TodoMatrixApp extends StatelessWidget {
         ),
         useMaterial3: true,
       ),
-      themeMode: ThemeMode.system,
+      themeMode: themeMode,
       home: const MainScreen(),
     );
   }

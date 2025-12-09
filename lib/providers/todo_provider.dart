@@ -1,3 +1,4 @@
+import 'package:flutter/material.dart' show ThemeMode;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uuid/uuid.dart';
 
@@ -377,6 +378,21 @@ class AppDataNotifier extends StateNotifier<AppData> {
     _triggerAutoSave();
   }
 
+  // ==================== 设置操作 ====================
+
+  /// 设置主题模式
+  void setThemeMode(ThemeMode themeMode) {
+    final newSettings = state.settings.copyWith(themeMode: themeMode);
+    state = _updateLastModified(state.copyWith(settings: newSettings));
+    _triggerAutoSave();
+  }
+
+  /// 更新应用设置
+  void updateSettings(AppSettings newSettings) {
+    state = _updateLastModified(state.copyWith(settings: newSettings));
+    _triggerAutoSave();
+  }
+
   // ==================== 数据导入导出 ====================
 
   /// 导出数据到文件
@@ -462,4 +478,16 @@ final todoItemProvider = Provider.family<TodoItem?, ({String listId, String item
   } catch (_) {
     return null;
   }
+});
+
+/// 获取当前主题模式
+final themeModeProvider = Provider<ThemeMode>((ref) {
+  final appData = ref.watch(appDataProvider);
+  return appData.settings.themeMode;
+});
+
+/// 获取应用设置
+final appSettingsProvider = Provider<AppSettings>((ref) {
+  final appData = ref.watch(appDataProvider);
+  return appData.settings;
 });

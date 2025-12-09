@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import 'widgets/main_screen.dart';
+
 /// TodoMatrix 应用入口
 void main() {
   runApp(
@@ -31,11 +33,7 @@ class TodoMatrixApp extends StatelessWidget {
         useMaterial3: true,
       ),
       themeMode: ThemeMode.system,
-      home: const Scaffold(
-        body: Center(
-          child: Text('TodoMatrix - 待办事项管理'),
-        ),
-      ),
+      home: const MainScreen(),
     );
   }
 }

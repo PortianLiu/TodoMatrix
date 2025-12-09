@@ -1,11 +1,28 @@
+import 'dart:io';
+
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'providers/todo_provider.dart';
+import 'services/window_service.dart';
 import 'widgets/main_screen.dart';
 
 /// TodoMatrix 应用入口
-void main() {
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+
+  // Windows 平台初始化窗口服务
+  if (!kIsWeb && Platform.isWindows) {
+    await WindowService.instance.initialize();
+
+    // 设置退出回调
+    WindowService.instance.onExitApp = () {
+      WindowService.instance.destroy();
+      exit(0);
+    };
+  }
+
   runApp(
     const ProviderScope(
       child: TodoMatrixApp(),

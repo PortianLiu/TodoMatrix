@@ -35,6 +35,10 @@ AppSettings _$AppSettingsFromJson(Map<String, dynamic> json) => AppSettings(
       pinToDesktop: json['pinToDesktop'] as bool? ?? false,
       edgeHideEnabled: json['edgeHideEnabled'] as bool? ?? false,
       pinOpacity: (json['pinOpacity'] as num?)?.toDouble() ?? 0.85,
+      windowX: (json['windowX'] as num?)?.toDouble(),
+      windowY: (json['windowY'] as num?)?.toDouble(),
+      windowWidth: (json['windowWidth'] as num?)?.toDouble(),
+      windowHeight: (json['windowHeight'] as num?)?.toDouble(),
     );
 
 Map<String, dynamic> _$AppSettingsToJson(AppSettings instance) =>
@@ -48,4 +52,8 @@ Map<String, dynamic> _$AppSettingsToJson(AppSettings instance) =>
       'pinToDesktop': instance.pinToDesktop,
       'edgeHideEnabled': instance.edgeHideEnabled,
       'pinOpacity': instance.pinOpacity,
+      'windowX': instance.windowX,
+      'windowY': instance.windowY,
+      'windowWidth': instance.windowWidth,
+      'windowHeight': instance.windowHeight,
     };

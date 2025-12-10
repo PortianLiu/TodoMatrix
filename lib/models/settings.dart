@@ -151,6 +151,18 @@ class AppSettings {
   /// 钉在桌面时的透明度（0.3-1.0）
   final double pinOpacity;
 
+  /// 窗口位置 X（Windows）
+  final double? windowX;
+
+  /// 窗口位置 Y（Windows）
+  final double? windowY;
+
+  /// 窗口宽度（Windows）
+  final double? windowWidth;
+
+  /// 窗口高度（Windows）
+  final double? windowHeight;
+
   const AppSettings({
     this.themeMode = ThemeMode.system,
     this.themeColor = '9999ff',
@@ -161,6 +173,10 @@ class AppSettings {
     this.pinToDesktop = false,
     this.edgeHideEnabled = false,
     this.pinOpacity = 0.85,
+    this.windowX,
+    this.windowY,
+    this.windowWidth,
+    this.windowHeight,
   });
 
   factory AppSettings.fromJson(Map<String, dynamic> json) =>
@@ -178,6 +194,10 @@ class AppSettings {
     bool? pinToDesktop,
     bool? edgeHideEnabled,
     double? pinOpacity,
+    double? windowX,
+    double? windowY,
+    double? windowWidth,
+    double? windowHeight,
     bool clearCustomDataPath = false,
   }) {
     return AppSettings(
@@ -191,6 +211,10 @@ class AppSettings {
       pinToDesktop: pinToDesktop ?? this.pinToDesktop,
       edgeHideEnabled: edgeHideEnabled ?? this.edgeHideEnabled,
       pinOpacity: pinOpacity ?? this.pinOpacity,
+      windowX: windowX ?? this.windowX,
+      windowY: windowY ?? this.windowY,
+      windowWidth: windowWidth ?? this.windowWidth,
+      windowHeight: windowHeight ?? this.windowHeight,
     );
   }
 
@@ -206,7 +230,11 @@ class AppSettings {
         other.minimizeToTray == minimizeToTray &&
         other.pinToDesktop == pinToDesktop &&
         other.edgeHideEnabled == edgeHideEnabled &&
-        other.pinOpacity == pinOpacity;
+        other.pinOpacity == pinOpacity &&
+        other.windowX == windowX &&
+        other.windowY == windowY &&
+        other.windowWidth == windowWidth &&
+        other.windowHeight == windowHeight;
   }
 
   @override
@@ -221,6 +249,10 @@ class AppSettings {
       pinToDesktop,
       edgeHideEnabled,
       pinOpacity,
+      windowX,
+      windowY,
+      windowWidth,
+      windowHeight,
     );
   }
 }

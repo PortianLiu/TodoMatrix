@@ -11,6 +11,8 @@ import '../services/window_service.dart';
 import 'settings_panel.dart';
 import 'todo_list_widget.dart';
 
+// ignore: unused_import 用于 windowManager.startDragging()
+
 /// 主界面
 class MainScreen extends ConsumerStatefulWidget {
   const MainScreen({super.key});
@@ -77,7 +79,7 @@ class _MainScreenState extends ConsumerState<MainScreen> {
     );
   }
 
-  /// 构建自定义标题栏（Windows）
+  /// 构建自定义标题栏（Windows）- 仅用于拖拽和工具栏
   Widget _buildCustomTitleBar() {
     return GestureDetector(
       onPanStart: (_) => windowManager.startDragging(),
@@ -117,48 +119,10 @@ class _MainScreenState extends ConsumerState<MainScreen> {
               onPressed: _openSettings,
               visualDensity: VisualDensity.compact,
             ),
-            const SizedBox(width: 8),
-            // 窗口控制按钮
-            _buildWindowButtons(),
+            const SizedBox(width: 12),
           ],
         ),
       ),
-    );
-  }
-
-  /// 构建窗口控制按钮
-  Widget _buildWindowButtons() {
-    final buttonColor = Theme.of(context).colorScheme.onPrimaryContainer;
-    
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        // 最小化
-        _WindowButton(
-          icon: Icons.remove,
-          color: buttonColor,
-          onPressed: () => windowManager.minimize(),
-        ),
-        // 最大化/还原
-        _WindowButton(
-          icon: Icons.crop_square,
-          color: buttonColor,
-          onPressed: () async {
-            if (await windowManager.isMaximized()) {
-              windowManager.unmaximize();
-            } else {
-              windowManager.maximize();
-            }
-          },
-        ),
-        // 关闭（最小化到托盘）
-        _WindowButton(
-          icon: Icons.close,
-          color: buttonColor,
-          hoverColor: Colors.red,
-          onPressed: () => WindowService.instance.minimizeToTray(),
-        ),
-      ],
     );
   }
 
@@ -285,53 +249,6 @@ class _MainScreenState extends ConsumerState<MainScreen> {
     Navigator.of(context).push(
       MaterialPageRoute(
         builder: (context) => const SettingsPanel(),
-      ),
-    );
-  }
-}
-
-/// 窗口控制按钮组件
-class _WindowButton extends StatefulWidget {
-  final IconData icon;
-  final Color color;
-  final Color? hoverColor;
-  final VoidCallback onPressed;
-
-  const _WindowButton({
-    required this.icon,
-    required this.color,
-    this.hoverColor,
-    required this.onPressed,
-  });
-
-  @override
-  State<_WindowButton> createState() => _WindowButtonState();
-}
-
-class _WindowButtonState extends State<_WindowButton> {
-  bool _isHovered = false;
-
-  @override
-  Widget build(BuildContext context) {
-    return MouseRegion(
-      onEnter: (_) => setState(() => _isHovered = true),
-      onExit: (_) => setState(() => _isHovered = false),
-      child: GestureDetector(
-        onTap: widget.onPressed,
-        child: Container(
-          width: 46,
-          height: 40,
-          color: _isHovered
-              ? (widget.hoverColor ?? widget.color.withValues(alpha: 0.1))
-              : Colors.transparent,
-          child: Icon(
-            widget.icon,
-            size: 16,
-            color: _isHovered && widget.hoverColor != null
-                ? Colors.white
-                : widget.color,
-          ),
-        ),
       ),
     );
   }

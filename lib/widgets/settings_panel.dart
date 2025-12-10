@@ -4,6 +4,7 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:window_manager/window_manager.dart';
 
 import '../models/settings.dart';
 import '../providers/layout_provider.dart';
@@ -29,11 +30,10 @@ class SettingsPanel extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final settings = ref.watch(appSettingsProvider);
     final layoutSettings = ref.watch(layoutSettingsProvider);
+    final isWindows = !kIsWeb && Platform.isWindows;
 
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('设置'),
-      ),
+      appBar: isWindows ? _buildWindowsAppBar(context) : AppBar(title: const Text('设置')),
       body: ListView(
         children: [
           // 主题设置
@@ -62,10 +62,25 @@ class SettingsPanel extends ConsumerWidget {
           if (!kIsWeb && Platform.isWindows) ...[
             _buildSectionHeader(context, 'Windows 功能'),
             _buildPinToDesktopTile(context, ref, settings.pinToDesktop),
+            if (settings.pinToDesktop)
+              _buildPinOpacityTile(context, ref, settings.pinOpacity),
             _buildEdgeHideTile(context, ref, settings.edgeHideEnabled),
             _buildCustomDataPathTile(context, ref, settings.customDataPath),
           ],
         ],
+      ),
+    );
+  }
+
+  /// 构建 Windows 自定义 AppBar（支持拖拽）
+  PreferredSizeWidget _buildWindowsAppBar(BuildContext context) {
+    return PreferredSize(
+      preferredSize: const Size.fromHeight(56),
+      child: GestureDetector(
+        onPanStart: (_) => windowManager.startDragging(),
+        child: AppBar(
+          title: const Text('设置'),
+        ),
       ),
     );
   }
@@ -425,9 +440,36 @@ class SettingsPanel extends ConsumerWidget {
         ref.read(appDataProvider.notifier).updateSettings(
               currentSettings.copyWith(pinToDesktop: value),
             );
-        // 应用窗口设置
-        await WindowService.instance.setPinToDesktop(value);
+        // 应用窗口设置（使用保存的透明度）
+        await WindowService.instance.setPinToDesktop(value, opacity: currentSettings.pinOpacity);
       },
+    );
+  }
+
+  /// 构建钉在桌面透明度设置项
+  Widget _buildPinOpacityTile(BuildContext context, WidgetRef ref, double opacity) {
+    return ListTile(
+      leading: const Icon(Icons.opacity_outlined),
+      title: const Text('窗口透明度'),
+      subtitle: Text('${(opacity * 100).toInt()}%'),
+      trailing: SizedBox(
+        width: 200,
+        child: Slider(
+          value: opacity,
+          min: 0.3,
+          max: 1.0,
+          divisions: 14,
+          label: '${(opacity * 100).toInt()}%',
+          onChanged: (value) async {
+            final currentSettings = ref.read(appSettingsProvider);
+            ref.read(appDataProvider.notifier).updateSettings(
+                  currentSettings.copyWith(pinOpacity: value),
+                );
+            // 实时应用透明度
+            await WindowService.instance.setPinOpacity(value);
+          },
+        ),
+      ),
     );
   }
 

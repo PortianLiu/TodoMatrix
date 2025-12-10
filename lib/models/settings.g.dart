@@ -34,6 +34,7 @@ AppSettings _$AppSettingsFromJson(Map<String, dynamic> json) => AppSettings(
       minimizeToTray: json['minimizeToTray'] as bool? ?? true,
       pinToDesktop: json['pinToDesktop'] as bool? ?? false,
       edgeHideEnabled: json['edgeHideEnabled'] as bool? ?? false,
+      pinOpacity: (json['pinOpacity'] as num?)?.toDouble() ?? 0.85,
     );
 
 Map<String, dynamic> _$AppSettingsToJson(AppSettings instance) =>
@@ -46,4 +47,5 @@ Map<String, dynamic> _$AppSettingsToJson(AppSettings instance) =>
       'minimizeToTray': instance.minimizeToTray,
       'pinToDesktop': instance.pinToDesktop,
       'edgeHideEnabled': instance.edgeHideEnabled,
+      'pinOpacity': instance.pinOpacity,
     };

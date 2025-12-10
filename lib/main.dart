@@ -5,12 +5,19 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'providers/todo_provider.dart';
+import 'services/storage_service.dart';
 import 'services/window_service.dart';
 import 'widgets/main_screen.dart';
+
+/// 全局 ProviderContainer（用于在 main 中访问 provider）
+late ProviderContainer _container;
 
 /// TodoMatrix 应用入口
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  // 创建 ProviderContainer
+  _container = ProviderContainer();
 
   // Windows 平台初始化窗口服务
   if (!kIsWeb && Platform.isWindows) {
@@ -19,15 +26,68 @@ void main() async {
     // 设置退出回调
     WindowService.instance.onExitApp = () {
       WindowService.instance.destroy();
+      _container.dispose();
       exit(0);
     };
+    
+    // 预加载数据以获取保存的窗口位置
+    await _restoreWindowBounds();
+    
+    // 设置窗口位置/大小变化回调
+    WindowService.instance.onWindowBoundsChanged = _onWindowBoundsChanged;
   }
 
   runApp(
-    const ProviderScope(
-      child: TodoMatrixApp(),
+    UncontrolledProviderScope(
+      container: _container,
+      child: const TodoMatrixApp(),
     ),
   );
+}
+
+/// 恢复保存的窗口位置和大小
+Future<void> _restoreWindowBounds() async {
+  try {
+    // 直接从存储服务加载数据
+    final storageService = StorageService();
+    final data = await storageService.loadData();
+    final settings = data.settings;
+    
+    // 恢复窗口位置和大小
+    await WindowService.instance.restoreWindowBounds(
+      x: settings.windowX,
+      y: settings.windowY,
+      width: settings.windowWidth,
+      height: settings.windowHeight,
+    );
+    
+    storageService.dispose();
+  } catch (e) {
+    debugPrint('恢复窗口位置失败: $e');
+  }
+}
+
+/// 窗口位置/大小变化时保存
+void _onWindowBoundsChanged(double x, double y, double width, double height) {
+  try {
+    final notifier = _container.read(appDataProvider.notifier);
+    final currentSettings = _container.read(appSettingsProvider);
+    
+    // 只有当位置或大小真正变化时才保存
+    if (currentSettings.windowX != x ||
+        currentSettings.windowY != y ||
+        currentSettings.windowWidth != width ||
+        currentSettings.windowHeight != height) {
+      notifier.updateSettings(currentSettings.copyWith(
+        windowX: x,
+        windowY: y,
+        windowWidth: width,
+        windowHeight: height,
+      ));
+    }
+  } catch (e) {
+    // 忽略错误（可能是初始化阶段）
+  }
 }
 
 /// 从十六进制字符串解析颜色

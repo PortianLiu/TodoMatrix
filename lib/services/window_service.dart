@@ -41,6 +41,7 @@ class WindowService with WindowListener {
   EdgeDirection _dockedEdge = EdgeDirection.none; // 窗口停靠的边缘
   bool _isHiddenAtEdge = false;
   bool _isDragging = false; // 是否正在拖拽窗口
+  bool _wasMouseInWindow = true; // 上一次检测时鼠标是否在窗口内（用于边缘检测优化）
   Timer? _mouseCheckTimer;
   Offset _normalPosition = Offset.zero; // 正常位置（未隐藏时）
   Size _windowSize = const Size(1200, 800);
@@ -61,6 +62,8 @@ class WindowService with WindowListener {
   void Function()? onTrayIconClick;
   void Function()? onShowWindow;
   void Function()? onExitApp;
+  /// 窗口位置/大小变化回调（用于保存设置）
+  void Function(double x, double y, double width, double height)? onWindowBoundsChanged;
 
   /// 是否是 Windows 平台
   bool get isWindows => !kIsWeb && Platform.isWindows;
@@ -82,6 +85,30 @@ class WindowService with WindowListener {
 
   /// 是否已隐藏在边缘
   bool get isHiddenAtEdge => _isHiddenAtEdge;
+
+  /// 恢复保存的窗口位置和大小
+  Future<void> restoreWindowBounds({
+    double? x,
+    double? y,
+    double? width,
+    double? height,
+  }) async {
+    if (!isWindows) return;
+    
+    // 如果有保存的大小，先设置大小
+    if (width != null && height != null && width >= 400 && height >= 300) {
+      await windowManager.setSize(Size(width, height));
+      _windowSize = Size(width, height);
+    }
+    
+    // 如果有保存的位置，设置位置
+    if (x != null && y != null) {
+      await windowManager.setPosition(Offset(x, y));
+      _normalPosition = Offset(x, y);
+    }
+    
+    debugPrint('恢复窗口位置: ($x, $y), 大小: ($width, $height)');
+  }
 
   /// 初始化窗口服务
   Future<void> initialize() async {
@@ -106,6 +133,9 @@ class WindowService with WindowListener {
     await windowManager.setResizable(true);
 
     await windowManager.waitUntilReadyToShow(windowOptions);
+    
+    // 记录初始窗口大小
+    _windowSize = await windowManager.getSize();
     await windowManager.show();
     await windowManager.focus();
 
@@ -574,16 +604,19 @@ class WindowService with WindowListener {
   }
 
   /// 检测鼠标位置，决定是否显示/隐藏窗口
+  /// 
+  /// 性能优化策略：
+  /// - 窗口已隐藏时：只检测鼠标是否靠近边缘（轻量操作）
+  /// - 窗口未隐藏时：只在鼠标首次离开窗口时检测贴边（避免重复检测）
   Future<void> _checkMousePosition() async {
     if (!_edgeHideEnabled || _isDragging) return;
 
     try {
       final cursorPos = await screenRetriever.getCursorScreenPoint();
-      final windowPos = await windowManager.getPosition();
-      final windowSize = await windowManager.getSize();
 
       if (_isHiddenAtEdge) {
         // 当前隐藏状态，检测鼠标是否靠近边缘触发显示
+        // 这是轻量操作，只比较坐标值
         bool shouldShow = false;
         const triggerZone = 3.0; // 触发显示的区域（像素）
         
@@ -603,9 +636,13 @@ class WindowService with WindowListener {
 
         if (shouldShow) {
           await _showFromEdge();
+          _wasMouseInWindow = true;
         }
       } else {
-        // 当前显示状态，检测鼠标是否离开窗口
+        // 当前显示状态
+        final windowPos = await windowManager.getPosition();
+        final windowSize = await windowManager.getSize();
+        
         const margin = 15.0;
         final windowRect = Rect.fromLTWH(
           windowPos.dx - margin,
@@ -616,16 +653,20 @@ class WindowService with WindowListener {
 
         final isMouseInWindow = windowRect.contains(cursorPos);
 
-        // 鼠标离开窗口区域时，检查窗口是否贴边
-        // 但如果鼠标在任务栏上，不触发隐藏（避免窗口闪烁）
-        if (!isMouseInWindow && !_isMouseInTaskbar(cursorPos)) {
-          // 更新当前显示器边界（窗口可能被拖到其他显示器）
-          // 如果窗口跨越多个显示器，不进行贴边操作（避免不同缩放比导致的计算错误）
-          final isFullyInDisplay = await _updateCurrentDisplayBounds(windowPos);
-          if (!isFullyInDisplay) {
-            debugPrint('窗口跨越多个显示器，跳过贴边检测');
+        // 只在鼠标首次离开窗口时检测贴边（避免重复检测）
+        // 如果鼠标一直在窗口外，不需要重复检测
+        if (!isMouseInWindow && _wasMouseInWindow) {
+          _wasMouseInWindow = false;
+          
+          // 如果鼠标在任务栏上，不触发隐藏（避免窗口闪烁）
+          if (_isMouseInTaskbar(cursorPos)) {
             return;
           }
+          
+          // 更新当前显示器边界（窗口可能被拖到其他显示器）
+          // 如果窗口跨越多个显示器，不进行贴边操作
+          final isFullyInDisplay = await _updateCurrentDisplayBounds(windowPos);
+          if (!isFullyInDisplay) return;
           
           // 检测窗口是否处于屏幕边缘
           final edge = _detectWindowEdge(windowPos, windowSize);
@@ -639,6 +680,8 @@ class WindowService with WindowListener {
             
             await _hideToEdge();
           }
+        } else if (isMouseInWindow) {
+          _wasMouseInWindow = true;
         }
       }
     } catch (e) {
@@ -816,17 +859,30 @@ class WindowService with WindowListener {
 
   @override
   void onWindowMoved() {
-    // 窗口移动事件不做任何处理
-    // 越界回弹在准备隐藏前执行
+    // 窗口移动后保存位置
+    _saveWindowBounds();
   }
 
   @override
   void onWindowResized() {
-    // 窗口大小改变后更新记录
-    if (_edgeHideEnabled && !_isHiddenAtEdge) {
-      windowManager.getSize().then((size) {
-        _windowSize = size;
-      });
+    // 窗口大小改变后更新记录并保存
+    windowManager.getSize().then((size) {
+      _windowSize = size;
+      _saveWindowBounds();
+    });
+  }
+  
+  /// 保存窗口位置和大小
+  Future<void> _saveWindowBounds() async {
+    // 隐藏在边缘时不保存（避免保存隐藏位置）
+    if (_isHiddenAtEdge) return;
+    
+    try {
+      final pos = await windowManager.getPosition();
+      final size = await windowManager.getSize();
+      onWindowBoundsChanged?.call(pos.dx, pos.dy, size.width, size.height);
+    } catch (e) {
+      // 忽略错误
     }
   }
 

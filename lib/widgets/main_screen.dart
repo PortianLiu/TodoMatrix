@@ -119,7 +119,7 @@ class _MainScreenState extends ConsumerState<MainScreen> {
             _buildEdgeHideButton(),
             _buildColumnsSelector(),
             IconButton(
-              icon: Icon(Icons.add, size: 20, color: Theme.of(context).colorScheme.onPrimaryContainer),
+              icon: Icon(Icons.add, size: 21, color: Theme.of(context).colorScheme.onPrimaryContainer),
               tooltip: '新建列表',
               onPressed: _createNewList,
               visualDensity: VisualDensity.compact,
@@ -141,7 +141,7 @@ class _MainScreenState extends ConsumerState<MainScreen> {
     final columns = ref.watch(columnsPerRowProvider);
 
     return PopupMenuButton<int>(
-      icon: Icon(Icons.grid_view, color: Theme.of(context).colorScheme.onPrimaryContainer),
+      icon: Icon(Icons.grid_view, size: 19, color: Theme.of(context).colorScheme.onPrimaryContainer),
       tooltip: '调整列数',
       initialValue: columns,
       onSelected: (value) {

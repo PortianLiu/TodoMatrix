@@ -113,7 +113,8 @@ class _MainScreenState extends ConsumerState<MainScreen> {
               ),
             ),
             const Spacer(),
-            // 工具栏按钮
+            // 工具栏按钮（图钉在最左边）
+            _buildPinButton(),
             _buildColumnsSelector(),
             IconButton(
               icon: Icon(Icons.add, size: 20, color: Theme.of(context).colorScheme.onPrimaryContainer),
@@ -121,8 +122,6 @@ class _MainScreenState extends ConsumerState<MainScreen> {
               onPressed: _createNewList,
               visualDensity: VisualDensity.compact,
             ),
-            // 钉在桌面按钮
-            _buildPinButton(),
             IconButton(
               icon: Icon(Icons.settings_outlined, size: 20, color: Theme.of(context).colorScheme.onPrimaryContainer),
               tooltip: '设置',

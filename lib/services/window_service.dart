@@ -566,10 +566,13 @@ class WindowService with WindowListener {
           // 检测窗口是否处于屏幕边缘
           final edge = _detectWindowEdge(windowPos, windowSize);
           if (edge != EdgeDirection.none) {
-            // 窗口贴边，记录位置并隐藏
             _dockedEdge = edge;
-            _normalPosition = windowPos;
             _windowSize = windowSize;
+            
+            // 在隐藏前执行越界回弹，确保 _normalPosition 是正确的位置
+            final correctedPos = await _snapToEdgeIfNeeded(windowPos, windowSize);
+            _normalPosition = correctedPos;
+            
             await _hideToEdge();
           }
         }
@@ -642,84 +645,62 @@ class WindowService with WindowListener {
     if (!_isDragging) return;
     _isDragging = false;
     
-    debugPrint('鼠标松开，执行回弹检测');
+    debugPrint('鼠标松开');
     
     // 恢复最大化功能
     if (_edgeHideEnabled) {
       await windowManager.setMaximizable(true);
-      // 贴边回弹：如果窗口靠近边缘，自动吸附到边缘
-      await _snapToEdgeIfNeeded();
     }
   }
 
   /// 越界回弹：如果窗口超出屏幕边界，回弹到屏幕内
   /// - 左/右/上边出界：完全回弹到屏幕内
   /// - 下边出界：只需保证标题栏露出即可（约20px）
-  Future<void> _snapToEdgeIfNeeded() async {
-    if (!_edgeHideEnabled) return;
-
-    try {
-      final windowPos = await windowManager.getPosition();
-      final windowSize = await windowManager.getSize();
-      _windowSize = windowSize;
-      
-      // 更新当前显示器边界
-      // 如果窗口跨越多个显示器，不进行越界回弹（避免不同缩放比导致的计算错误）
-      final isOnSingleDisplay = await _updateCurrentDisplayBounds(windowPos);
-      if (!isOnSingleDisplay) {
-        debugPrint('窗口跨越多个显示器，跳过越界回弹');
-        return;
-      }
-      
-      final displayLeft = _currentDisplayBounds.left;
-      final displayRight = _currentDisplayBounds.right;
-      final displayTop = _currentDisplayBounds.top;
-      final displayBottom = _currentDisplayBounds.bottom;
-      
-      double newX = windowPos.dx;
-      double newY = windowPos.dy;
-      bool needSnap = false;
-      
-      // 左边出界：窗口左边超出屏幕左边
-      if (windowPos.dx < displayLeft) {
-        newX = displayLeft;
-        needSnap = true;
-        debugPrint('左边出界回弹: ${windowPos.dx} < $displayLeft');
-      }
-      // 右边出界：窗口右边超出屏幕右边
-      else if (windowPos.dx + windowSize.width > displayRight) {
-        newX = displayRight - windowSize.width;
-        needSnap = true;
-        debugPrint('右边出界回弹: ${windowPos.dx + windowSize.width} > $displayRight');
-      }
-      
-      // 上边出界：窗口上边超出屏幕上边
-      if (windowPos.dy < displayTop) {
-        newY = displayTop;
-        needSnap = true;
-        debugPrint('上边出界回弹: ${windowPos.dy} < $displayTop');
-      }
-      // 下边出界：窗口顶部超出屏幕底部太多，只需露出标题栏
-      else {
-        const minVisibleHeight = 20.0; // 至少露出的高度（标题栏部分）
-        final visibleHeight = displayBottom - windowPos.dy; // 窗口在屏幕内的高度
-        
-        if (visibleHeight < minVisibleHeight) {
-          // 窗口露出部分不足，回弹到露出 minVisibleHeight
-          newY = displayBottom - minVisibleHeight;
-          needSnap = true;
-          debugPrint('下边出界回弹: 露出高度 $visibleHeight < $minVisibleHeight');
-        }
-      }
-      
-      if (needSnap) {
-        final snappedPos = Offset(newX, newY);
-        await windowManager.setPosition(snappedPos);
-        debugPrint('越界回弹: $snappedPos');
-      }
-    } catch (e) {
-      debugPrint('越界回弹失败: $e');
+  /// 
+  /// 返回修正后的窗口位置（如果没有越界则返回原位置）
+  Future<Offset> _snapToEdgeIfNeeded(Offset windowPos, Size windowSize) async {
+    final displayLeft = _currentDisplayBounds.left;
+    final displayRight = _currentDisplayBounds.right;
+    final displayTop = _currentDisplayBounds.top;
+    final displayBottom = _currentDisplayBounds.bottom;
+    
+    double newX = windowPos.dx;
+    double newY = windowPos.dy;
+    bool needSnap = false;
+    
+    // 左边出界：窗口左边超出屏幕左边
+    if (windowPos.dx < displayLeft) {
+      newX = displayLeft;
+      needSnap = true;
+      debugPrint('左边出界回弹: ${windowPos.dx} < $displayLeft');
     }
+    // 右边出界：窗口右边超出屏幕右边
+    else if (windowPos.dx + windowSize.width > displayRight) {
+      newX = displayRight - windowSize.width;
+      needSnap = true;
+      debugPrint('右边出界回弹: ${windowPos.dx + windowSize.width} > $displayRight');
+    }
+    
+    // 上边出界：窗口上边超出屏幕上边
+    if (windowPos.dy < displayTop) {
+      newY = displayTop;
+      needSnap = true;
+      debugPrint('上边出界回弹: ${windowPos.dy} < $displayTop');
+    }
+    // 下边出界：窗口顶部超出屏幕底部太多，只需露出标题栏
+    else {
+      const minVisibleHeight = 20.0; // 至少露出的高度（标题栏部分）
+      final visibleHeight = displayBottom - windowPos.dy; // 窗口在屏幕内的高度
+      
+      if (visibleHeight < minVisibleHeight) {
+        // 窗口露出部分不足，回弹到露出 minVisibleHeight
+        newY = displayBottom - minVisibleHeight;
+        needSnap = true;
+        debugPrint('下边出界回弹: 露出高度 $visibleHeight < $minVisibleHeight');
+      debugPrint('越界回弹: $snappedPos');
+    }
+    
+    return snappedPos;
   }
 
   // WindowListener 回调

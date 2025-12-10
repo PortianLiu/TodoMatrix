@@ -1,6 +1,6 @@
 import 'dart:async';
 import 'dart:io';
-import 'dart:ui' show Size, Offset;
+import 'dart:ui' show Size, Offset, Rect;
 
 import 'package:flutter/foundation.dart';
 import 'package:screen_retriever/screen_retriever.dart';

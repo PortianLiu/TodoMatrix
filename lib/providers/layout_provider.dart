@@ -15,6 +15,12 @@ final columnsPerRowProvider = Provider<int>((ref) {
   return layout.columnsPerRow;
 });
 
+/// 列表高度 Provider
+final listHeightProvider = Provider<double>((ref) {
+  final layout = ref.watch(layoutSettingsProvider);
+  return layout.listHeight;
+});
+
 /// 布局控制器
 class LayoutController {
   final Ref _ref;

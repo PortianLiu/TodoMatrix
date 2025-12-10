@@ -180,18 +180,20 @@ class WindowService with WindowListener {
     windowManager.removeListener(this);
   }
 
-  /// 设置钉在桌面
+  /// 设置钉在桌面（半透明置顶）
   Future<void> setPinToDesktop(bool enabled) async {
     if (!isWindows) return;
 
     _isPinnedToDesktop = enabled;
     if (enabled) {
-      // 设置窗口始终在底层（桌面级别）
-      await windowManager.setAlwaysOnBottom(true);
+      // 设置窗口始终置顶，半透明，不占用任务栏位置
+      await windowManager.setAlwaysOnTop(true);
+      await windowManager.setOpacity(0.85); // 85% 不透明度
       await windowManager.setSkipTaskbar(true);
     } else {
       // 恢复正常窗口
-      await windowManager.setAlwaysOnBottom(false);
+      await windowManager.setAlwaysOnTop(false);
+      await windowManager.setOpacity(1.0); // 完全不透明
       await windowManager.setSkipTaskbar(false);
     }
   }

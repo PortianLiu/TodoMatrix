@@ -41,9 +41,13 @@ class LayoutSettings {
   /// 列表 ID 排序
   final List<String> listOrder;
 
+  /// 列表卡片高度（像素）
+  final double listHeight;
+
   const LayoutSettings({
     this.columnsPerRow = 3,
     this.listOrder = const [],
+    this.listHeight = 400,
   });
 
   factory LayoutSettings.fromJson(Map<String, dynamic> json) =>
@@ -54,10 +58,12 @@ class LayoutSettings {
   LayoutSettings copyWith({
     int? columnsPerRow,
     List<String>? listOrder,
+    double? listHeight,
   }) {
     return LayoutSettings(
       columnsPerRow: columnsPerRow ?? this.columnsPerRow,
       listOrder: listOrder ?? this.listOrder,
+      listHeight: listHeight ?? this.listHeight,
     );
   }
 
@@ -66,6 +72,7 @@ class LayoutSettings {
     if (identical(this, other)) return true;
     if (other is! LayoutSettings) return false;
     if (other.columnsPerRow != columnsPerRow ||
+        other.listHeight != listHeight ||
         other.listOrder.length != listOrder.length) {
       return false;
     }
@@ -76,7 +83,7 @@ class LayoutSettings {
   }
 
   @override
-  int get hashCode => Object.hash(columnsPerRow, Object.hashAll(listOrder));
+  int get hashCode => Object.hash(columnsPerRow, listHeight, Object.hashAll(listOrder));
 }
 
 /// 预设主题色

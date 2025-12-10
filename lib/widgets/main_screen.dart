@@ -281,8 +281,9 @@ class _MainScreenState extends ConsumerState<MainScreen> {
 
     return IconButton(
       icon: Icon(
-        isEnabled ? Icons.dock : Icons.dock_outlined,
+        Icons.view_sidebar_outlined,
         size: 20,
+        // 开启时颜色加深（primary），关闭时颜色变浅
         color: isEnabled
             ? Theme.of(context).colorScheme.primary
             : Theme.of(context).colorScheme.onPrimaryContainer,

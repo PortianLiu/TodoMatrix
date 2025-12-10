@@ -285,41 +285,37 @@ class _MainScreenState extends ConsumerState<MainScreen> {
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        // 1. switch_right (类似跳到末尾)
+        // 1. last_page (放大到24)
         IconButton(
-          icon: Icon(Icons.switch_right, size: 20, color: iconColor),
-          tooltip: '图标1: switch_right',
+          icon: Icon(Icons.last_page, size: 24, color: iconColor),
+          tooltip: '图标1: last_page (24px)',
           onPressed: _toggleEdgeHide,
           visualDensity: VisualDensity.compact,
         ),
-        // 2. last_page
-        IconButton(
-          icon: Icon(Icons.last_page, size: 20, color: iconColor),
-          tooltip: '图标2: last_page',
-          onPressed: _toggleEdgeHide,
-          visualDensity: VisualDensity.compact,
-        ),
-        // 3. vertical_align_top
+        // 2. vertical_align_top
         IconButton(
           icon: Icon(Icons.vertical_align_top, size: 20, color: iconColor),
-          tooltip: '图标3: vertical_align_top',
+          tooltip: '图标2: vertical_align_top',
           onPressed: _toggleEdgeHide,
           visualDensity: VisualDensity.compact,
         ),
-        // 4. border_style 顺时针90度
+        // 3. border_style 顺时针90度
         IconButton(
           icon: Transform.rotate(
             angle: math.pi / 2,
             child: Icon(Icons.border_style, size: 20, color: iconColor),
           ),
-          tooltip: '图标4: border_style (旋转90°)',
+          tooltip: '图标3: border_style (顺时针90°)',
           onPressed: _toggleEdgeHide,
           visualDensity: VisualDensity.compact,
         ),
-        // 5. keyboard_tab
+        // 4. arrow_right_alt (逆时针90度，类似bottom_right_click效果)
         IconButton(
-          icon: Icon(Icons.keyboard_tab, size: 20, color: iconColor),
-          tooltip: '图标5: keyboard_tab',
+          icon: Transform.rotate(
+            angle: -math.pi / 2,
+            child: Icon(Icons.arrow_right_alt, size: 20, color: iconColor),
+          ),
+          tooltip: '图标4: arrow_right_alt (逆时针90°)',
           onPressed: _toggleEdgeHide,
           visualDensity: VisualDensity.compact,
         ),

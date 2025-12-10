@@ -652,16 +652,12 @@ class WindowService with WindowListener {
     }
   }
 
-  /// 通知结束拖拽窗口
-  /// 注意：由于 windowManager.startDragging() 会接管鼠标事件，
-  /// Flutter 的 onPanEnd 可能不会触发，所以主要依赖 onWindowMoved 的防抖检测
+  /// 通知结束拖拽窗口（鼠标松开时调用）
   Future<void> notifyDragEnd() async {
-    debugPrint('notifyDragEnd 被调用, _isDragging=$_isDragging');
-    // 取消防抖定时器，立即处理
-    _dragEndDebounceTimer?.cancel();
-    
-    if (!_isDragging) return; // 已经处理过了
+    if (!_isDragging) return;
     _isDragging = false;
+    
+    debugPrint('鼠标松开，执行回弹检测');
     
     // 恢复最大化功能
     if (_edgeHideEnabled) {
@@ -782,19 +778,11 @@ class WindowService with WindowListener {
 
   @override
   void onWindowMoved() {
-    // 使用防抖检测拖拽结束：每次移动都重置定时器，停止移动 200ms 后认为拖拽结束
-    if (_edgeHideEnabled && !_isHiddenAtEdge) {
-      // 如果还没标记为拖拽状态，先标记
-      if (!_isDragging) {
-        _isDragging = true;
-        windowManager.setMaximizable(false);
-        debugPrint('检测到窗口移动，标记为拖拽状态');
-      }
-      
-      _dragEndDebounceTimer?.cancel();
-      _dragEndDebounceTimer = Timer(const Duration(milliseconds: 200), () {
-        _onDragEndDetected();
-      });
+    // 窗口移动时只标记拖拽状态，不触发回弹
+    // 回弹只在 notifyDragEnd() 中执行（鼠标松开时）
+    if (_edgeHideEnabled && !_isHiddenAtEdge && !_isDragging) {
+      _isDragging = true;
+      windowManager.setMaximizable(false);
     }
   }
 

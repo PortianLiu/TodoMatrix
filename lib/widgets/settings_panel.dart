@@ -45,6 +45,7 @@ class SettingsPanel extends ConsumerWidget {
           // 布局设置
           _buildSectionHeader(context, '布局'),
           _buildColumnsTile(context, ref, layoutSettings.columnsPerRow),
+          _buildListHeightTile(context, ref, layoutSettings.listHeight),
           const Divider(),
 
           // 同步设置
@@ -234,6 +235,28 @@ class SettingsPanel extends ConsumerWidget {
     );
   }
 
+  /// 构建列表高度设置项
+  Widget _buildListHeightTile(BuildContext context, WidgetRef ref, double currentHeight) {
+    return ListTile(
+      leading: const Icon(Icons.height_outlined),
+      title: const Text('列表高度'),
+      subtitle: Text('${currentHeight.toInt()} 像素'),
+      trailing: SizedBox(
+        width: 200,
+        child: Slider(
+          value: currentHeight,
+          min: 200,
+          max: 800,
+          divisions: 12,
+          label: '${currentHeight.toInt()}',
+          onChanged: (value) {
+            ref.read(appDataProvider.notifier).setListHeight(value);
+          },
+        ),
+      ),
+    );
+  }
+
   /// 构建同步开关
   Widget _buildSyncTile(BuildContext context, WidgetRef ref, bool syncEnabled) {
     return SwitchListTile(
@@ -395,7 +418,7 @@ class SettingsPanel extends ConsumerWidget {
     return SwitchListTile(
       secondary: const Icon(Icons.push_pin_outlined),
       title: const Text('钉在桌面'),
-      subtitle: const Text('窗口固定在桌面最底层，不遮挡其他窗口'),
+      subtitle: const Text('窗口半透明置顶，不占用任务栏位置'),
       value: enabled,
       onChanged: (value) async {
         final currentSettings = ref.read(appSettingsProvider);

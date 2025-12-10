@@ -154,6 +154,8 @@ class _MainScreenState extends ConsumerState<MainScreen> {
   }
 
   Widget _buildGridView(List lists, int columns) {
+    final listHeight = ref.watch(listHeightProvider);
+    
     return Padding(
       padding: const EdgeInsets.all(12),
       child: GridView.builder(
@@ -161,7 +163,7 @@ class _MainScreenState extends ConsumerState<MainScreen> {
           crossAxisCount: columns,
           crossAxisSpacing: 12,
           mainAxisSpacing: 12,
-          childAspectRatio: 0.8, // 调整卡片比例
+          mainAxisExtent: listHeight, // 使用设置的列表高度
         ),
         itemCount: lists.length,
         itemBuilder: (context, index) {

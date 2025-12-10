@@ -375,6 +375,15 @@ class AppDataNotifier extends StateNotifier<AppData> {
     _triggerAutoSave();
   }
 
+  /// 设置列表高度
+  void setListHeight(double height) {
+    if (height < 200 || height > 800) return;
+
+    final newLayout = state.layout.copyWith(listHeight: height);
+    state = _updateLastModified(state.copyWith(layout: newLayout));
+    _triggerAutoSave();
+  }
+
   /// 更新列表排序顺序
   void updateListOrder(List<String> newOrder) {
     final now = DateTime.now();

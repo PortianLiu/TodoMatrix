@@ -13,12 +13,14 @@ LayoutSettings _$LayoutSettingsFromJson(Map<String, dynamic> json) =>
               ?.map((e) => e as String)
               .toList() ??
           const [],
+      listHeight: (json['listHeight'] as num?)?.toDouble() ?? 400,
     );
 
 Map<String, dynamic> _$LayoutSettingsToJson(LayoutSettings instance) =>
     <String, dynamic>{
       'columnsPerRow': instance.columnsPerRow,
       'listOrder': instance.listOrder,
+      'listHeight': instance.listHeight,
     };
 
 AppSettings _$AppSettingsFromJson(Map<String, dynamic> json) => AppSettings(

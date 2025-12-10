@@ -70,7 +70,7 @@ class WindowService with WindowListener {
     final primaryDisplay = await screenRetriever.getPrimaryDisplay();
     _screenSize = primaryDisplay.size;
 
-    // 设置窗口选项 - 隐藏原生标题栏
+    // 设置窗口选项 - 隐藏原生标题栏但保留窗口控制按钮
     const windowOptions = WindowOptions(
       size: Size(1200, 800),
       minimumSize: Size(400, 300),
@@ -78,6 +78,9 @@ class WindowService with WindowListener {
       skipTaskbar: false,
       titleBarStyle: TitleBarStyle.hidden, // 隐藏原生标题栏
     );
+
+    // 设置为可调整大小
+    await windowManager.setResizable(true);
 
     await windowManager.waitUntilReadyToShow(windowOptions);
     await windowManager.show();
@@ -95,12 +98,22 @@ class WindowService with WindowListener {
   }
 
   /// 初始化系统托盘
+  /// 注意：需要在 assets 目录下放置 app_icon.ico 文件才能正常工作
   Future<void> _initSystemTray() async {
     if (_trayInitialized) return;
 
     try {
-      // 使用应用图标，如果没有则使用空字符串
-      String iconPath = '';
+      // 检查图标文件是否存在
+      // Windows 需要 .ico 格式的图标
+      // 如果没有图标文件，托盘功能将被禁用
+      final iconPath = 'assets/app_icon.ico';
+      final iconFile = File(iconPath);
+      
+      if (!await iconFile.exists()) {
+        debugPrint('托盘图标文件不存在: $iconPath，托盘功能已禁用');
+        debugPrint('请在 assets 目录下放置 app_icon.ico 文件以启用托盘功能');
+        return;
+      }
 
       await _systemTray.initSystemTray(
         title: 'TodoMatrix',
@@ -127,27 +140,31 @@ class WindowService with WindowListener {
       // 注册托盘图标点击事件
       _systemTray.registerSystemTrayEventHandler((eventName) {
         if (eventName == kSystemTrayEventClick) {
-          // 左键点击恢复窗口
           restoreFromTray();
         } else if (eventName == kSystemTrayEventRightClick) {
-          // 右键显示菜单
           _systemTray.popUpContextMenu();
         }
         onTrayIconClick?.call();
       });
 
       _trayInitialized = true;
+      debugPrint('托盘初始化成功');
     } catch (e) {
       debugPrint('托盘初始化失败: $e');
     }
   }
 
-  /// 最小化到托盘
+  /// 最小化到托盘（如果托盘未初始化则最小化到任务栏）
   Future<void> minimizeToTray() async {
     if (!isWindows) return;
 
-    await windowManager.hide();
-    _isMinimizedToTray = true;
+    if (_trayInitialized) {
+      await windowManager.hide();
+      _isMinimizedToTray = true;
+    } else {
+      // 托盘未初始化，最小化到任务栏
+      await windowManager.minimize();
+    }
   }
 
   /// 从托盘恢复窗口
@@ -333,8 +350,12 @@ class WindowService with WindowListener {
   // WindowListener 回调
   @override
   void onWindowClose() async {
-    // 关闭时最小化到托盘而不是退出
-    await minimizeToTray();
+    // 关闭时：如果托盘已初始化则最小化到托盘，否则直接退出
+    if (_trayInitialized) {
+      await minimizeToTray();
+    } else {
+      onExitApp?.call();
+    }
   }
 
   @override

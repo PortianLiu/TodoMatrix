@@ -412,41 +412,45 @@ class WindowService with WindowListener {
   Future<bool> _updateCurrentDisplayBounds(Offset windowPos) async {
     try {
       final displays = await screenRetriever.getAllDisplays();
-      // 稍微缩小窗口矩形，避免边缘接触被误判为重叠
-      const shrink = 5.0;
-      final windowRect = Rect.fromLTWH(
-        windowPos.dx + shrink,
-        windowPos.dy + shrink,
-        _windowSize.width - shrink * 2,
-        _windowSize.height - shrink * 2,
-      );
       
-      // 找到窗口中心点所在的显示器
+      // 窗口四个角的坐标（稍微内缩避免边缘误判）
+      const inset = 10.0;
+      final corners = [
+        Offset(windowPos.dx + inset, windowPos.dy + inset), // 左上
+        Offset(windowPos.dx + _windowSize.width - inset, windowPos.dy + inset), // 右上
+        Offset(windowPos.dx + inset, windowPos.dy + _windowSize.height - inset), // 左下
+        Offset(windowPos.dx + _windowSize.width - inset, windowPos.dy + _windowSize.height - inset), // 右下
+      ];
+      
+      // 窗口中心点
       final windowCenter = Offset(
         windowPos.dx + _windowSize.width / 2,
         windowPos.dy + _windowSize.height / 2,
       );
       
-      Rect? foundBounds;
-      int overlappingDisplays = 0; // 窗口覆盖的显示器数量
-      
+      // 构建所有显示器边界列表
+      final displayBounds = <Rect>[];
       for (final display in displays) {
-        final bounds = Rect.fromLTWH(
+        displayBounds.add(Rect.fromLTWH(
           display.visiblePosition?.dx ?? 0,
           display.visiblePosition?.dy ?? 0,
           display.visibleSize?.width ?? display.size.width,
           display.visibleSize?.height ?? display.size.height,
-        );
-        
-        // 检查窗口是否与此显示器有实质性重叠（不只是边缘接触）
-        final intersection = windowRect.intersect(bounds);
-        if (intersection.width > 0 && intersection.height > 0) {
-          overlappingDisplays++;
-        }
-        
+        ));
+      }
+      
+      // 找到窗口中心点所在的显示器
+      Rect? foundBounds;
+      for (final bounds in displayBounds) {
         if (bounds.contains(windowCenter)) {
           foundBounds = bounds;
+          break;
         }
+      }
+      
+      if (foundBounds == null && displayBounds.isNotEmpty) {
+        // 如果中心点不在任何显示器内，使用第一个显示器
+        foundBounds = displayBounds.first;
       }
       
       if (foundBounds == null) {
@@ -461,11 +465,22 @@ class WindowService with WindowListener {
       
       _currentDisplayBounds = foundBounds;
       
-      // 窗口只在一个显示器上时返回 true
-      // 窗口同时处于多个显示器时返回 false（跨屏）
-      final isOnSingleDisplay = overlappingDisplays <= 1;
+      // 策略A：检测窗口四个角是否都在同一个显示器上
+      // 找出每个角所在的显示器索引
+      final cornerDisplays = <int>{};
+      for (final corner in corners) {
+        for (int i = 0; i < displayBounds.length; i++) {
+          if (displayBounds[i].contains(corner)) {
+            cornerDisplays.add(i);
+            break;
+          }
+        }
+      }
       
-      debugPrint('当前显示器边界: $_currentDisplayBounds, 覆盖显示器数: $overlappingDisplays');
+      // 如果四个角在不同的显示器上，说明跨屏
+      final isOnSingleDisplay = cornerDisplays.length <= 1;
+      
+      debugPrint('当前显示器边界: $_currentDisplayBounds, 四角所在显示器: $cornerDisplays');
       return isOnSingleDisplay;
     } catch (e) {
       debugPrint('获取显示器信息失败: $e');
@@ -699,14 +714,15 @@ class WindowService with WindowListener {
       }
       
       // 下界回弹：如果窗口下边超出屏幕，保证标题栏露出
-      // visibleSize 已经排除了任务栏，所以 bottom 就是任务栏上方
-      const minVisibleHeight = 60.0; // 至少露出的高度（标题栏 + 一点内容）
+      // visibleSize 已经排除了任务栏，所以 bottom 就是任务栏上方的位置
+      // 回弹后窗口顶部应该在 displayBottom - minVisibleHeight 处
+      const minVisibleHeight = 20.0; // 至少露出的高度（标题栏部分）
       final displayBottom = _currentDisplayBounds.bottom;
-      final windowBottom = windowPos.dy + windowSize.height;
       final visibleHeight = displayBottom - windowPos.dy; // 窗口在屏幕内的高度
       
       if (visibleHeight < minVisibleHeight) {
         // 窗口露出部分不足，需要回弹
+        // 让窗口顶部位于 displayBottom - minVisibleHeight，即露出任务栏上方 minVisibleHeight 高度
         newY = displayBottom - minVisibleHeight;
         needSnap = true;
         debugPrint('下界回弹: 露出高度 $visibleHeight < $minVisibleHeight');

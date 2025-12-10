@@ -412,11 +412,13 @@ class WindowService with WindowListener {
   Future<bool> _updateCurrentDisplayBounds(Offset windowPos) async {
     try {
       final displays = await screenRetriever.getAllDisplays();
+      // 稍微缩小窗口矩形，避免边缘接触被误判为重叠
+      const shrink = 5.0;
       final windowRect = Rect.fromLTWH(
-        windowPos.dx,
-        windowPos.dy,
-        _windowSize.width,
-        _windowSize.height,
+        windowPos.dx + shrink,
+        windowPos.dy + shrink,
+        _windowSize.width - shrink * 2,
+        _windowSize.height - shrink * 2,
       );
       
       // 找到窗口中心点所在的显示器
@@ -436,8 +438,9 @@ class WindowService with WindowListener {
           display.visibleSize?.height ?? display.size.height,
         );
         
-        // 检查窗口是否与此显示器有交集
-        if (windowRect.overlaps(bounds)) {
+        // 检查窗口是否与此显示器有实质性重叠（不只是边缘接触）
+        final intersection = windowRect.intersect(bounds);
+        if (intersection.width > 0 && intersection.height > 0) {
           overlappingDisplays++;
         }
         
@@ -652,6 +655,7 @@ class WindowService with WindowListener {
   }
 
   /// 贴边回弹：如果窗口靠近边缘，自动吸附到边缘
+  /// 下界回弹：如果窗口下边超出屏幕，只需保证标题栏露出即可
   Future<void> _snapToEdgeIfNeeded() async {
     if (!_edgeHideEnabled) return;
 
@@ -662,41 +666,57 @@ class WindowService with WindowListener {
       
       // 更新当前显示器边界
       // 如果窗口跨越多个显示器，不进行贴边回弹（避免不同缩放比导致的计算错误）
-      final isFullyInDisplay = await _updateCurrentDisplayBounds(windowPos);
-      if (!isFullyInDisplay) {
+      final isOnSingleDisplay = await _updateCurrentDisplayBounds(windowPos);
+      if (!isOnSingleDisplay) {
         debugPrint('窗口跨越多个显示器，跳过贴边回弹');
         return;
       }
       
-      // 检测是否靠近边缘
+      // 检测是否靠近边缘（上、左、右）
       final edge = _detectWindowEdge(windowPos, windowSize);
-      if (edge == EdgeDirection.none) return;
       
       // 计算吸附位置
-      Offset snappedPos;
+      double newX = windowPos.dx;
+      double newY = windowPos.dy;
+      bool needSnap = false;
+      
+      // 处理上、左、右边缘吸附
       switch (edge) {
         case EdgeDirection.left:
-          // 吸附到左边缘
-          snappedPos = Offset(_currentDisplayBounds.left, windowPos.dy);
+          newX = _currentDisplayBounds.left;
+          needSnap = true;
           break;
         case EdgeDirection.right:
-          // 吸附到右边缘
-          snappedPos = Offset(
-            _currentDisplayBounds.right - windowSize.width,
-            windowPos.dy,
-          );
+          newX = _currentDisplayBounds.right - windowSize.width;
+          needSnap = true;
           break;
         case EdgeDirection.top:
-          // 吸附到上边缘
-          snappedPos = Offset(windowPos.dx, _currentDisplayBounds.top);
+          newY = _currentDisplayBounds.top;
+          needSnap = true;
           break;
         case EdgeDirection.none:
-          return;
+          break;
       }
       
-      // 应用吸附位置
-      await windowManager.setPosition(snappedPos);
-      debugPrint('贴边回弹: $snappedPos (边缘: $edge)');
+      // 下界回弹：如果窗口下边超出屏幕，保证标题栏露出
+      // visibleSize 已经排除了任务栏，所以 bottom 就是任务栏上方
+      const minVisibleHeight = 60.0; // 至少露出的高度（标题栏 + 一点内容）
+      final displayBottom = _currentDisplayBounds.bottom;
+      final windowBottom = windowPos.dy + windowSize.height;
+      final visibleHeight = displayBottom - windowPos.dy; // 窗口在屏幕内的高度
+      
+      if (visibleHeight < minVisibleHeight) {
+        // 窗口露出部分不足，需要回弹
+        newY = displayBottom - minVisibleHeight;
+        needSnap = true;
+        debugPrint('下界回弹: 露出高度 $visibleHeight < $minVisibleHeight');
+      }
+      
+      if (needSnap) {
+        final snappedPos = Offset(newX, newY);
+        await windowManager.setPosition(snappedPos);
+        debugPrint('贴边回弹: $snappedPos (边缘: $edge)');
+      }
     } catch (e) {
       debugPrint('贴边回弹失败: $e');
     }

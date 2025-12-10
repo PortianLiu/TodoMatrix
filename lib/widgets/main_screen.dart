@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -250,18 +251,21 @@ class _MainScreenState extends ConsumerState<MainScreen> {
     );
   }
 
-  /// 构建钉在桌面按钮
+  /// 构建钉在桌面按钮（倾斜图钉效果）
   Widget _buildPinButton() {
     final settings = ref.watch(appSettingsProvider);
     final isPinned = settings.pinToDesktop;
 
     return IconButton(
-      icon: Icon(
-        isPinned ? Icons.push_pin : Icons.push_pin_outlined,
-        size: 20,
-        color: isPinned
-            ? Theme.of(context).colorScheme.primary
-            : Theme.of(context).colorScheme.onPrimaryContainer,
+      icon: Transform.rotate(
+        angle: isPinned ? 0 : math.pi / 6, // 未钉住时倾斜 30 度
+        child: Icon(
+          isPinned ? Icons.push_pin : Icons.push_pin_outlined,
+          size: 20,
+          color: isPinned
+              ? Theme.of(context).colorScheme.primary
+              : Theme.of(context).colorScheme.onPrimaryContainer,
+        ),
       ),
       tooltip: isPinned ? '取消钉在桌面' : '钉在桌面',
       onPressed: _togglePinToDesktop,

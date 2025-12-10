@@ -387,7 +387,7 @@ class WindowService with WindowListener {
       // 获取当前窗口位置和大小
       _normalPosition = await windowManager.getPosition();
       _windowSize = await windowManager.getSize();
-      // 更新当前显示器边界
+      // 更新当前显示器边界（忽略返回值，初始化时不需要检查跨屏）
       await _updateCurrentDisplayBounds(_normalPosition);
       // 重置状态
       _dockedEdge = EdgeDirection.none;
@@ -408,15 +408,24 @@ class WindowService with WindowListener {
   }
 
   /// 更新当前窗口所在显示器的边界
-  Future<void> _updateCurrentDisplayBounds(Offset windowPos) async {
+  /// 返回 true 表示窗口完全在一个显示器内，false 表示窗口跨越多个显示器
+  Future<bool> _updateCurrentDisplayBounds(Offset windowPos) async {
     try {
       final displays = await screenRetriever.getAllDisplays();
+      final windowRect = Rect.fromLTWH(
+        windowPos.dx,
+        windowPos.dy,
+        _windowSize.width,
+        _windowSize.height,
+      );
+      
       // 找到窗口中心点所在的显示器
       final windowCenter = Offset(
         windowPos.dx + _windowSize.width / 2,
         windowPos.dy + _windowSize.height / 2,
       );
       
+      Rect? foundBounds;
       for (final display in displays) {
         final bounds = Rect.fromLTWH(
           display.visiblePosition?.dx ?? 0,
@@ -425,21 +434,35 @@ class WindowService with WindowListener {
           display.visibleSize?.height ?? display.size.height,
         );
         if (bounds.contains(windowCenter)) {
-          _currentDisplayBounds = bounds;
-          debugPrint('当前显示器边界: $_currentDisplayBounds');
-          return;
+          foundBounds = bounds;
+          break;
         }
       }
       
-      // 如果没找到，使用主显示器
-      final primary = await screenRetriever.getPrimaryDisplay();
-      _currentDisplayBounds = Rect.fromLTWH(
-        0, 0,
-        primary.visibleSize?.width ?? primary.size.width,
-        primary.visibleSize?.height ?? primary.size.height,
-      );
+      if (foundBounds == null) {
+        // 如果没找到，使用主显示器
+        final primary = await screenRetriever.getPrimaryDisplay();
+        foundBounds = Rect.fromLTWH(
+          0, 0,
+          primary.visibleSize?.width ?? primary.size.width,
+          primary.visibleSize?.height ?? primary.size.height,
+        );
+      }
+      
+      _currentDisplayBounds = foundBounds;
+      
+      // 检查窗口是否完全在当前显示器内
+      // 如果窗口跨越了显示器边界，返回 false
+      final isFullyContained = foundBounds.contains(windowRect.topLeft) &&
+          foundBounds.contains(windowRect.topRight) &&
+          foundBounds.contains(windowRect.bottomLeft) &&
+          foundBounds.contains(windowRect.bottomRight);
+      
+      debugPrint('当前显示器边界: $_currentDisplayBounds, 窗口完全在内: $isFullyContained');
+      return isFullyContained;
     } catch (e) {
       debugPrint('获取显示器信息失败: $e');
+      return false;
     }
   }
 
@@ -524,7 +547,13 @@ class WindowService with WindowListener {
         // 鼠标离开窗口区域时，检查窗口是否贴边
         if (!isMouseInWindow) {
           // 更新当前显示器边界（窗口可能被拖到其他显示器）
-          await _updateCurrentDisplayBounds(windowPos);
+          // 如果窗口跨越多个显示器，不进行贴边操作（避免不同缩放比导致的计算错误）
+          final isFullyInDisplay = await _updateCurrentDisplayBounds(windowPos);
+          if (!isFullyInDisplay) {
+            debugPrint('窗口跨越多个显示器，跳过贴边检测');
+            return;
+          }
+          
           // 检测窗口是否处于屏幕边缘
           final edge = _detectWindowEdge(windowPos, windowSize);
           if (edge != EdgeDirection.none) {
@@ -626,7 +655,12 @@ class WindowService with WindowListener {
       _windowSize = windowSize;
       
       // 更新当前显示器边界
-      await _updateCurrentDisplayBounds(windowPos);
+      // 如果窗口跨越多个显示器，不进行贴边回弹（避免不同缩放比导致的计算错误）
+      final isFullyInDisplay = await _updateCurrentDisplayBounds(windowPos);
+      if (!isFullyInDisplay) {
+        debugPrint('窗口跨越多个显示器，跳过贴边回弹');
+        return;
+      }
       
       // 检测是否靠近边缘
       final edge = _detectWindowEdge(windowPos, windowSize);

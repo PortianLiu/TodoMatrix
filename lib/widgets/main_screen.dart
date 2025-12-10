@@ -121,6 +121,8 @@ class _MainScreenState extends ConsumerState<MainScreen> {
               onPressed: _createNewList,
               visualDensity: VisualDensity.compact,
             ),
+            // 钉在桌面按钮
+            _buildPinButton(),
             IconButton(
               icon: Icon(Icons.settings_outlined, size: 20, color: Theme.of(context).colorScheme.onPrimaryContainer),
               tooltip: '设置',
@@ -247,6 +249,39 @@ class _MainScreenState extends ConsumerState<MainScreen> {
         },
       ),
     );
+  }
+
+  /// 构建钉在桌面按钮
+  Widget _buildPinButton() {
+    final settings = ref.watch(appSettingsProvider);
+    final isPinned = settings.pinToDesktop;
+
+    return IconButton(
+      icon: Icon(
+        isPinned ? Icons.push_pin : Icons.push_pin_outlined,
+        size: 20,
+        color: isPinned
+            ? Theme.of(context).colorScheme.primary
+            : Theme.of(context).colorScheme.onPrimaryContainer,
+      ),
+      tooltip: isPinned ? '取消钉在桌面' : '钉在桌面',
+      onPressed: _togglePinToDesktop,
+      visualDensity: VisualDensity.compact,
+    );
+  }
+
+  /// 切换钉在桌面状态
+  Future<void> _togglePinToDesktop() async {
+    final settings = ref.read(appSettingsProvider);
+    final newValue = !settings.pinToDesktop;
+    
+    // 更新设置
+    ref.read(appDataProvider.notifier).updateSettings(
+      settings.copyWith(pinToDesktop: newValue),
+    );
+    
+    // 应用窗口设置
+    await WindowService.instance.setPinToDesktop(newValue, opacity: settings.pinOpacity);
   }
 
   void _createNewList() {

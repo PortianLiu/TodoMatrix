@@ -34,6 +34,7 @@ class WindowService with WindowListener {
   /// 钉在桌面状态
   bool _isPinnedToDesktop = false;
   double _pinOpacity = 0.85; // 钉在桌面时的透明度
+  bool _isClickThrough = false; // 鼠标穿透状态
 
   /// 贴边隐藏状态
   bool _edgeHideEnabled = false;
@@ -64,6 +65,9 @@ class WindowService with WindowListener {
 
   /// 钉在桌面时的透明度
   double get pinOpacity => _pinOpacity;
+
+  /// 是否鼠标穿透
+  bool get isClickThrough => _isClickThrough;
 
   /// 是否启用贴边隐藏
   bool get edgeHideEnabled => _edgeHideEnabled;
@@ -136,20 +140,7 @@ class WindowService with WindowListener {
       );
 
       // 设置托盘菜单
-      final menu = Menu();
-      await menu.buildFrom([
-        MenuItemLabel(
-          label: '显示窗口',
-          onClicked: (menuItem) => restoreFromTray(),
-        ),
-        MenuSeparator(),
-        MenuItemLabel(
-          label: '退出',
-          onClicked: (menuItem) => _handleExit(),
-        ),
-      ]);
-
-      await _systemTray.setContextMenu(menu);
+      await _updateTrayMenu();
 
       // 注册托盘图标点击事件
       _systemTray.registerSystemTrayEventHandler((eventName) {
@@ -282,6 +273,38 @@ class WindowService with WindowListener {
     onExitApp?.call();
   }
 
+  /// 更新托盘菜单
+  Future<void> _updateTrayMenu() async {
+    if (!_trayInitialized) return;
+
+    final menu = Menu();
+    final menuItems = <MenuItemBase>[
+      MenuItemLabel(
+        label: '显示窗口',
+        onClicked: (menuItem) => restoreFromTray(),
+      ),
+    ];
+
+    // 仅在钉住时显示鼠标穿透选项
+    if (_isPinnedToDesktop) {
+      menuItems.add(MenuItemLabel(
+        label: _isClickThrough ? '✓ 鼠标穿透' : '  鼠标穿透',
+        onClicked: (menuItem) => toggleClickThrough(),
+      ));
+    }
+
+    menuItems.addAll([
+      MenuSeparator(),
+      MenuItemLabel(
+        label: '退出',
+        onClicked: (menuItem) => _handleExit(),
+      ),
+    ]);
+
+    await menu.buildFrom(menuItems);
+    await _systemTray.setContextMenu(menu);
+  }
+
   /// 销毁托盘
   Future<void> destroy() async {
     if (!isWindows) return;
@@ -306,11 +329,22 @@ class WindowService with WindowListener {
       await windowManager.setAlwaysOnTop(true);
       await windowManager.setOpacity(_pinOpacity);
       await windowManager.setSkipTaskbar(true);
+      // 如果之前开启了鼠标穿透，恢复它
+      if (_isClickThrough) {
+        await windowManager.setIgnoreMouseEvents(true);
+      }
     } else {
       await windowManager.setAlwaysOnTop(false);
       await windowManager.setOpacity(1.0);
       await windowManager.setSkipTaskbar(false);
+      // 取消钉住时，关闭鼠标穿透
+      if (_isClickThrough) {
+        _isClickThrough = false;
+        await windowManager.setIgnoreMouseEvents(false);
+      }
     }
+    // 更新托盘菜单
+    await _updateTrayMenu();
   }
 
   /// 设置钉在桌面的透明度
@@ -321,6 +355,23 @@ class WindowService with WindowListener {
     if (_isPinnedToDesktop) {
       await windowManager.setOpacity(_pinOpacity);
     }
+  }
+
+  /// 设置鼠标穿透（仅在钉住时生效）
+  Future<void> setClickThrough(bool enabled) async {
+    if (!isWindows) return;
+    
+    _isClickThrough = enabled;
+    if (_isPinnedToDesktop) {
+      await windowManager.setIgnoreMouseEvents(enabled);
+    }
+    // 更新托盘菜单
+    await _updateTrayMenu();
+  }
+
+  /// 切换鼠标穿透状态
+  Future<void> toggleClickThrough() async {
+    await setClickThrough(!_isClickThrough);
   }
 
   /// 设置贴边隐藏

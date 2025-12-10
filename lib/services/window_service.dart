@@ -44,7 +44,9 @@ class WindowService with WindowListener {
   Timer? _mouseCheckTimer;
   Offset _normalPosition = Offset.zero; // 正常位置（未隐藏时）
   Size _windowSize = const Size(1200, 800);
-  Size _screenSize = const Size(1920, 1080);
+  
+  /// 当前窗口所在显示器的工作区域
+  Rect _currentDisplayBounds = Rect.zero;
 
   /// 应用程序根目录（用于托盘图标路径）
   String? _appDir;
@@ -385,9 +387,8 @@ class WindowService with WindowListener {
       // 获取当前窗口位置和大小
       _normalPosition = await windowManager.getPosition();
       _windowSize = await windowManager.getSize();
-      // 更新屏幕尺寸
-      final primaryDisplay = await screenRetriever.getPrimaryDisplay();
-      _screenSize = primaryDisplay.size;
+      // 更新当前显示器边界
+      await _updateCurrentDisplayBounds(_normalPosition);
       // 重置状态
       _dockedEdge = EdgeDirection.none;
       _isHiddenAtEdge = false;
@@ -406,21 +407,61 @@ class WindowService with WindowListener {
     }
   }
 
-  /// 检测窗口是否处于屏幕边缘
+  /// 更新当前窗口所在显示器的边界
+  Future<void> _updateCurrentDisplayBounds(Offset windowPos) async {
+    try {
+      final displays = await screenRetriever.getAllDisplays();
+      // 找到窗口中心点所在的显示器
+      final windowCenter = Offset(
+        windowPos.dx + _windowSize.width / 2,
+        windowPos.dy + _windowSize.height / 2,
+      );
+      
+      for (final display in displays) {
+        final bounds = Rect.fromLTWH(
+          display.visiblePosition?.dx ?? 0,
+          display.visiblePosition?.dy ?? 0,
+          display.visibleSize?.width ?? display.size.width,
+          display.visibleSize?.height ?? display.size.height,
+        );
+        if (bounds.contains(windowCenter)) {
+          _currentDisplayBounds = bounds;
+          debugPrint('当前显示器边界: $_currentDisplayBounds');
+          return;
+        }
+      }
+      
+      // 如果没找到，使用主显示器
+      final primary = await screenRetriever.getPrimaryDisplay();
+      _currentDisplayBounds = Rect.fromLTWH(
+        0, 0,
+        primary.visibleSize?.width ?? primary.size.width,
+        primary.visibleSize?.height ?? primary.size.height,
+      );
+    } catch (e) {
+      debugPrint('获取显示器信息失败: $e');
+    }
+  }
+
+  /// 检测窗口是否处于屏幕边缘（基于当前显示器）
   /// 返回贴边方向
   EdgeDirection _detectWindowEdge(Offset windowPos, Size windowSize) {
     const threshold = 10.0; // 窗口距离屏幕边缘的阈值
     
-    // 左边缘：窗口左边贴着屏幕左边
-    if (windowPos.dx <= threshold) {
+    final displayLeft = _currentDisplayBounds.left;
+    final displayRight = _currentDisplayBounds.right;
+    final displayTop = _currentDisplayBounds.top;
+    
+    // 左边缘：窗口左边贴着显示器左边
+    if (windowPos.dx <= displayLeft + threshold) {
       return EdgeDirection.left;
     }
-    // 右边缘：窗口右边贴着屏幕右边
-    if (windowPos.dx + windowSize.width >= _screenSize.width - threshold) {
+    // 右边缘：窗口右边贴着显示器右边
+    if (windowPos.dx + windowSize.width >= displayRight - threshold) {
       return EdgeDirection.right;
     }
-    // 上边缘：窗口上边贴着屏幕上边
-    if (windowPos.dy <= threshold) {
+    // 上边缘：窗口上边贴着显示器上边
+    if (windowPos.dy <= displayTop + threshold) {
       return EdgeDirection.top;
     }
     
@@ -452,13 +493,13 @@ class WindowService with WindowListener {
         
         switch (_dockedEdge) {
           case EdgeDirection.left:
-            shouldShow = cursorPos.dx <= triggerZone;
+            shouldShow = cursorPos.dx <= _currentDisplayBounds.left + triggerZone;
             break;
           case EdgeDirection.right:
-            shouldShow = cursorPos.dx >= _screenSize.width - triggerZone;
+            shouldShow = cursorPos.dx >= _currentDisplayBounds.right - triggerZone;
             break;
           case EdgeDirection.top:
-            shouldShow = cursorPos.dy <= triggerZone;
+            shouldShow = cursorPos.dy <= _currentDisplayBounds.top + triggerZone;
             break;
           case EdgeDirection.none:
             break;
@@ -481,6 +522,8 @@ class WindowService with WindowListener {
 
         // 鼠标离开窗口区域时，检查窗口是否贴边
         if (!isMouseInWindow) {
+          // 更新当前显示器边界（窗口可能被拖到其他显示器）
+          await _updateCurrentDisplayBounds(windowPos);
           // 检测窗口是否处于屏幕边缘
           final edge = _detectWindowEdge(windowPos, windowSize);
           if (edge != EdgeDirection.none) {
@@ -508,15 +551,24 @@ class WindowService with WindowListener {
     switch (_dockedEdge) {
       case EdgeDirection.left:
         // 向左隐藏，只露出右边 3 像素
-        hiddenPos = Offset(-_windowSize.width + visiblePart, _normalPosition.dy);
+        hiddenPos = Offset(
+          _currentDisplayBounds.left - _windowSize.width + visiblePart,
+          _normalPosition.dy,
+        );
         break;
       case EdgeDirection.right:
         // 向右隐藏，只露出左边 3 像素
-        hiddenPos = Offset(_screenSize.width - visiblePart, _normalPosition.dy);
+        hiddenPos = Offset(
+          _currentDisplayBounds.right - visiblePart,
+          _normalPosition.dy,
+        );
         break;
       case EdgeDirection.top:
         // 向上隐藏，只露出下边 3 像素
-        hiddenPos = Offset(_normalPosition.dx, -_windowSize.height + visiblePart);
+        hiddenPos = Offset(
+          _normalPosition.dx,
+          _currentDisplayBounds.top - _windowSize.height + visiblePart,
+        );
         break;
       case EdgeDirection.none:
         return;
@@ -551,6 +603,54 @@ class WindowService with WindowListener {
     // 恢复最大化功能
     if (_edgeHideEnabled) {
       await windowManager.setMaximizable(true);
+      // 贴边回弹：如果窗口靠近边缘，自动吸附到边缘
+      await _snapToEdgeIfNeeded();
+    }
+  }
+
+  /// 贴边回弹：如果窗口靠近边缘，自动吸附到边缘
+  Future<void> _snapToEdgeIfNeeded() async {
+    if (!_edgeHideEnabled) return;
+
+    try {
+      final windowPos = await windowManager.getPosition();
+      final windowSize = await windowManager.getSize();
+      _windowSize = windowSize;
+      
+      // 更新当前显示器边界
+      await _updateCurrentDisplayBounds(windowPos);
+      
+      // 检测是否靠近边缘
+      final edge = _detectWindowEdge(windowPos, windowSize);
+      if (edge == EdgeDirection.none) return;
+      
+      // 计算吸附位置
+      Offset snappedPos;
+      switch (edge) {
+        case EdgeDirection.left:
+          // 吸附到左边缘
+          snappedPos = Offset(_currentDisplayBounds.left, windowPos.dy);
+          break;
+        case EdgeDirection.right:
+          // 吸附到右边缘
+          snappedPos = Offset(
+            _currentDisplayBounds.right - windowSize.width,
+            windowPos.dy,
+          );
+          break;
+        case EdgeDirection.top:
+          // 吸附到上边缘
+          snappedPos = Offset(windowPos.dx, _currentDisplayBounds.top);
+          break;
+        case EdgeDirection.none:
+          return;
+      }
+      
+      // 应用吸附位置
+      await windowManager.setPosition(snappedPos);
+      debugPrint('贴边回弹: $snappedPos (边缘: $edge)');
+    } catch (e) {
+      debugPrint('贴边回弹失败: $e');
     }
   }
 

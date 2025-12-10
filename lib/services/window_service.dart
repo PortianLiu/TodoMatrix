@@ -697,6 +697,13 @@ class WindowService with WindowListener {
         newY = displayBottom - minVisibleHeight;
         needSnap = true;
         debugPrint('下边出界回弹: 露出高度 $visibleHeight < $minVisibleHeight');
+      }
+    }
+    
+    final snappedPos = Offset(newX, newY);
+    
+    if (needSnap) {
+      await windowManager.setPosition(snappedPos);
       debugPrint('越界回弹: $snappedPos');
     }
     

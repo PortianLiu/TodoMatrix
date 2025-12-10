@@ -259,7 +259,7 @@ class _MainScreenState extends ConsumerState<MainScreen> {
 
     return IconButton(
       icon: Transform.rotate(
-        angle: isPinned ? 0 : math.pi * 2 / 9, // 未钉住时倾斜 40 度
+        angle: isPinned ? 0 : math.pi * 7 / 36, // 未钉住时倾斜 35 度
         child: Icon(
           isPinned ? Icons.push_pin : Icons.push_pin_outlined,
           size: 20,
@@ -278,19 +278,52 @@ class _MainScreenState extends ConsumerState<MainScreen> {
   Widget _buildEdgeHideButton() {
     final settings = ref.watch(appSettingsProvider);
     final isEnabled = settings.edgeHideEnabled;
+    final iconColor = isEnabled
+        ? Theme.of(context).colorScheme.primary
+        : Theme.of(context).colorScheme.onPrimaryContainer;
 
-    return IconButton(
-      icon: Icon(
-        Icons.view_sidebar_outlined,
-        size: 20,
-        // 开启时颜色加深（primary），关闭时颜色变浅
-        color: isEnabled
-            ? Theme.of(context).colorScheme.primary
-            : Theme.of(context).colorScheme.onPrimaryContainer,
-      ),
-      tooltip: isEnabled ? '关闭贴边隐藏' : '开启贴边隐藏',
-      onPressed: _toggleEdgeHide,
-      visualDensity: VisualDensity.compact,
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        // 1. text_select_jump_to_end
+        IconButton(
+          icon: Icon(Icons.text_select_jump_to_end, size: 20, color: iconColor),
+          tooltip: '图标1: text_select_jump_to_end',
+          onPressed: _toggleEdgeHide,
+          visualDensity: VisualDensity.compact,
+        ),
+        // 2. last_page
+        IconButton(
+          icon: Icon(Icons.last_page, size: 20, color: iconColor),
+          tooltip: '图标2: last_page',
+          onPressed: _toggleEdgeHide,
+          visualDensity: VisualDensity.compact,
+        ),
+        // 3. vertical_align_top
+        IconButton(
+          icon: Icon(Icons.vertical_align_top, size: 20, color: iconColor),
+          tooltip: '图标3: vertical_align_top',
+          onPressed: _toggleEdgeHide,
+          visualDensity: VisualDensity.compact,
+        ),
+        // 4. border_style 顺时针90度
+        IconButton(
+          icon: Transform.rotate(
+            angle: math.pi / 2,
+            child: Icon(Icons.border_style, size: 20, color: iconColor),
+          ),
+          tooltip: '图标4: border_style (旋转90°)',
+          onPressed: _toggleEdgeHide,
+          visualDensity: VisualDensity.compact,
+        ),
+        // 5. keyboard_tab
+        IconButton(
+          icon: Icon(Icons.keyboard_tab, size: 20, color: iconColor),
+          tooltip: '图标5: keyboard_tab',
+          onPressed: _toggleEdgeHide,
+          visualDensity: VisualDensity.compact,
+        ),
+      ],
     );
   }
 

@@ -778,24 +778,8 @@ class WindowService with WindowListener {
 
   @override
   void onWindowMoved() {
-    // 窗口移动时只标记拖拽状态，不触发回弹
-    // 回弹只在 notifyDragEnd() 中执行（鼠标松开时）
-    if (_edgeHideEnabled && !_isHiddenAtEdge && !_isDragging) {
-      _isDragging = true;
-      windowManager.setMaximizable(false);
-    }
-  }
-
-  /// 检测到拖拽结束（通过防抖）
-  Future<void> _onDragEndDetected() async {
-    debugPrint('防抖检测：拖拽结束, _isDragging=$_isDragging');
-    if (!_isDragging) return;
-    _isDragging = false;
-    
-    // 恢复最大化功能
-    await windowManager.setMaximizable(true);
-    // 贴边回弹
-    await _snapToEdgeIfNeeded();
+    // 窗口移动事件不做任何处理
+    // 回弹只在 notifyDragEnd() 中执行（鼠标松开时由 onPanEnd 调用）
   }
 
   @override

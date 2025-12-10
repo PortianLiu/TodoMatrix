@@ -148,6 +148,9 @@ class AppSettings {
   /// 贴边隐藏（低优先级）
   final bool edgeHideEnabled;
 
+  /// 钉在桌面时的透明度（0.3-1.0）
+  final double pinOpacity;
+
   const AppSettings({
     this.themeMode = ThemeMode.system,
     this.themeColor = '9999ff',
@@ -157,6 +160,7 @@ class AppSettings {
     this.minimizeToTray = true,
     this.pinToDesktop = false,
     this.edgeHideEnabled = false,
+    this.pinOpacity = 0.85,
   });
 
   factory AppSettings.fromJson(Map<String, dynamic> json) =>
@@ -173,6 +177,7 @@ class AppSettings {
     bool? minimizeToTray,
     bool? pinToDesktop,
     bool? edgeHideEnabled,
+    double? pinOpacity,
     bool clearCustomDataPath = false,
   }) {
     return AppSettings(
@@ -185,6 +190,7 @@ class AppSettings {
       minimizeToTray: minimizeToTray ?? this.minimizeToTray,
       pinToDesktop: pinToDesktop ?? this.pinToDesktop,
       edgeHideEnabled: edgeHideEnabled ?? this.edgeHideEnabled,
+      pinOpacity: pinOpacity ?? this.pinOpacity,
     );
   }
 
@@ -199,7 +205,8 @@ class AppSettings {
         other.customDataPath == customDataPath &&
         other.minimizeToTray == minimizeToTray &&
         other.pinToDesktop == pinToDesktop &&
-        other.edgeHideEnabled == edgeHideEnabled;
+        other.edgeHideEnabled == edgeHideEnabled &&
+        other.pinOpacity == pinOpacity;
   }
 
   @override
@@ -213,6 +220,7 @@ class AppSettings {
       minimizeToTray,
       pinToDesktop,
       edgeHideEnabled,
+      pinOpacity,
     );
   }
 }

@@ -44,9 +44,9 @@ class _MainScreenState extends ConsumerState<MainScreen> {
     if (kIsWeb || !Platform.isWindows) return;
 
     final settings = ref.read(appSettingsProvider);
-    // 应用钉在桌面设置
+    // 应用钉在桌面设置（使用保存的透明度）
     if (settings.pinToDesktop) {
-      await WindowService.instance.setPinToDesktop(true);
+      await WindowService.instance.setPinToDesktop(true, opacity: settings.pinOpacity);
     }
     // 应用贴边隐藏设置
     if (settings.edgeHideEnabled) {
@@ -84,7 +84,7 @@ class _MainScreenState extends ConsumerState<MainScreen> {
     return GestureDetector(
       onPanStart: (_) => windowManager.startDragging(),
       child: Container(
-        height: 40,
+        height: 56, // 与 AppBar 默认高度一致
         color: Theme.of(context).colorScheme.primaryContainer,
         child: Row(
           children: [

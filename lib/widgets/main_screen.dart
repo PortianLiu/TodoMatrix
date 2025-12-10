@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:window_manager/window_manager.dart';
 
 import '../providers/todo_provider.dart';
 import '../providers/layout_provider.dart';
@@ -60,30 +61,104 @@ class _MainScreenState extends ConsumerState<MainScreen> {
       );
     }
 
+    // Windows 平台使用自定义标题栏
+    final isWindows = !kIsWeb && Platform.isWindows;
+
     return Scaffold(
       backgroundColor: Theme.of(context).colorScheme.surface,
-      appBar: AppBar(
-        backgroundColor: Theme.of(context).colorScheme.primaryContainer,
-        title: Text(
-          'TodoMatrix',
-          style: TextStyle(color: Theme.of(context).colorScheme.onPrimaryContainer),
-        ),
-        actions: [
-          _buildColumnsSelector(),
-          IconButton(
-            icon: Icon(Icons.add, color: Theme.of(context).colorScheme.onPrimaryContainer),
-            tooltip: '新建列表',
-            onPressed: _createNewList,
-          ),
-          IconButton(
-            icon: Icon(Icons.settings_outlined, color: Theme.of(context).colorScheme.onPrimaryContainer),
-            tooltip: '设置',
-            onPressed: _openSettings,
-          ),
-          const SizedBox(width: 8),
+      body: Column(
+        children: [
+          // 自定义标题栏
+          if (isWindows) _buildCustomTitleBar(),
+          // 主内容
+          Expanded(child: _buildBody()),
         ],
       ),
-      body: _buildBody(),
+    );
+  }
+
+  /// 构建自定义标题栏（Windows）
+  Widget _buildCustomTitleBar() {
+    return GestureDetector(
+      onPanStart: (_) => windowManager.startDragging(),
+      child: Container(
+        height: 40,
+        color: Theme.of(context).colorScheme.primaryContainer,
+        child: Row(
+          children: [
+            const SizedBox(width: 12),
+            // 应用图标和标题
+            Icon(
+              Icons.checklist,
+              size: 20,
+              color: Theme.of(context).colorScheme.onPrimaryContainer,
+            ),
+            const SizedBox(width: 8),
+            Text(
+              'TodoMatrix',
+              style: TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.w500,
+                color: Theme.of(context).colorScheme.onPrimaryContainer,
+              ),
+            ),
+            const Spacer(),
+            // 工具栏按钮
+            _buildColumnsSelector(),
+            IconButton(
+              icon: Icon(Icons.add, size: 20, color: Theme.of(context).colorScheme.onPrimaryContainer),
+              tooltip: '新建列表',
+              onPressed: _createNewList,
+              visualDensity: VisualDensity.compact,
+            ),
+            IconButton(
+              icon: Icon(Icons.settings_outlined, size: 20, color: Theme.of(context).colorScheme.onPrimaryContainer),
+              tooltip: '设置',
+              onPressed: _openSettings,
+              visualDensity: VisualDensity.compact,
+            ),
+            const SizedBox(width: 8),
+            // 窗口控制按钮
+            _buildWindowButtons(),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// 构建窗口控制按钮
+  Widget _buildWindowButtons() {
+    final buttonColor = Theme.of(context).colorScheme.onPrimaryContainer;
+    
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        // 最小化
+        _WindowButton(
+          icon: Icons.remove,
+          color: buttonColor,
+          onPressed: () => windowManager.minimize(),
+        ),
+        // 最大化/还原
+        _WindowButton(
+          icon: Icons.crop_square,
+          color: buttonColor,
+          onPressed: () async {
+            if (await windowManager.isMaximized()) {
+              windowManager.unmaximize();
+            } else {
+              windowManager.maximize();
+            }
+          },
+        ),
+        // 关闭（最小化到托盘）
+        _WindowButton(
+          icon: Icons.close,
+          color: buttonColor,
+          hoverColor: Colors.red,
+          onPressed: () => WindowService.instance.minimizeToTray(),
+        ),
+      ],
     );
   }
 
@@ -210,6 +285,53 @@ class _MainScreenState extends ConsumerState<MainScreen> {
     Navigator.of(context).push(
       MaterialPageRoute(
         builder: (context) => const SettingsPanel(),
+      ),
+    );
+  }
+}
+
+/// 窗口控制按钮组件
+class _WindowButton extends StatefulWidget {
+  final IconData icon;
+  final Color color;
+  final Color? hoverColor;
+  final VoidCallback onPressed;
+
+  const _WindowButton({
+    required this.icon,
+    required this.color,
+    this.hoverColor,
+    required this.onPressed,
+  });
+
+  @override
+  State<_WindowButton> createState() => _WindowButtonState();
+}
+
+class _WindowButtonState extends State<_WindowButton> {
+  bool _isHovered = false;
+
+  @override
+  Widget build(BuildContext context) {
+    return MouseRegion(
+      onEnter: (_) => setState(() => _isHovered = true),
+      onExit: (_) => setState(() => _isHovered = false),
+      child: GestureDetector(
+        onTap: widget.onPressed,
+        child: Container(
+          width: 46,
+          height: 40,
+          color: _isHovered
+              ? (widget.hoverColor ?? widget.color.withValues(alpha: 0.1))
+              : Colors.transparent,
+          child: Icon(
+            widget.icon,
+            size: 16,
+            color: _isHovered && widget.hoverColor != null
+                ? Colors.white
+                : widget.color,
+          ),
+        ),
       ),
     );
   }

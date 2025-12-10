@@ -87,10 +87,6 @@ class WindowService with WindowListener {
     // 初始化窗口管理器
     await windowManager.ensureInitialized();
 
-    // 获取屏幕尺寸
-    final primaryDisplay = await screenRetriever.getPrimaryDisplay();
-    _screenSize = primaryDisplay.size;
-
     // 设置窗口选项 - 隐藏原生标题栏但保留窗口控制按钮
     const windowOptions = WindowOptions(
       size: Size(1200, 800),

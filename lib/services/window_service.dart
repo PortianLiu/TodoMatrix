@@ -1,8 +1,12 @@
 import 'dart:async';
 import 'dart:io';
+import 'dart:typed_data';
 import 'dart:ui' show Size, Offset, Rect;
 
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart' show rootBundle;
+import 'package:image/image.dart' as img;
+import 'package:path_provider/path_provider.dart';
 import 'package:screen_retriever/screen_retriever.dart';
 import 'package:system_tray/system_tray.dart';
 import 'package:window_manager/window_manager.dart';
@@ -109,31 +113,17 @@ class WindowService with WindowListener {
   }
 
   /// 初始化系统托盘
-  /// Windows 平台必须使用 .ico 格式图标
+  /// Windows 平台需要 .ico 格式图标，会自动从 PNG 转换
   Future<void> _initSystemTray() async {
     if (_trayInitialized) return;
 
     try {
-      // Windows 平台必须使用 .ico 格式
-      // 查找图标文件（只查找 .ico）
-      String? iconPath;
-      final basePath = _appDir ?? Directory.current.path;
+      // 获取或创建 ICO 图标
+      final iconPath = await _getOrCreateIcoIcon();
       
-      // 打包后的路径
-      final releaseIcoPath = '$basePath/data/flutter_assets/assets/app_icon.ico';
-      // 开发模式路径
-      const devIcoPath = 'assets/app_icon.ico';
-      
-      if (await File(releaseIcoPath).exists()) {
-        iconPath = releaseIcoPath;
-      } else if (await File(devIcoPath).exists()) {
-        iconPath = devIcoPath;
-      }
-
       if (iconPath == null) {
         debugPrint('托盘图标文件不存在，托盘功能已禁用');
-        debugPrint('Windows 平台必须使用 .ico 格式图标');
-        debugPrint('请在 assets 目录下放置 app_icon.ico 文件');
+        debugPrint('请在 assets 目录下放置 app_icon.png 或 app_icon.ico 文件');
         return;
       }
 
@@ -175,6 +165,92 @@ class WindowService with WindowListener {
       debugPrint('托盘初始化成功');
     } catch (e) {
       debugPrint('托盘初始化失败: $e');
+    }
+  }
+
+  /// 获取或创建 ICO 图标
+  /// 如果已有 ICO 文件则直接使用，否则从 PNG 转换
+  Future<String?> _getOrCreateIcoIcon() async {
+    final basePath = _appDir ?? Directory.current.path;
+    
+    // 1. 首先检查是否已有 ICO 文件
+    final releaseIcoPath = '$basePath/data/flutter_assets/assets/app_icon.ico';
+    final devIcoPath = 'assets/app_icon.ico';
+    
+    if (await File(releaseIcoPath).exists()) {
+      return releaseIcoPath;
+    }
+    if (await File(devIcoPath).exists()) {
+      return devIcoPath;
+    }
+    
+    // 2. 检查是否有 PNG 文件，如果有则转换为 ICO
+    final releasePngPath = '$basePath/data/flutter_assets/assets/app_icon.png';
+    final devPngPath = 'assets/app_icon.png';
+    
+    String? pngPath;
+    if (await File(releasePngPath).exists()) {
+      pngPath = releasePngPath;
+    } else if (await File(devPngPath).exists()) {
+      pngPath = devPngPath;
+    }
+    
+    if (pngPath != null) {
+      // 从 PNG 转换为 ICO
+      return await _convertPngToIco(pngPath);
+    }
+    
+    // 3. 尝试从 Flutter assets 加载
+    try {
+      final byteData = await rootBundle.load('assets/app_icon.png');
+      final bytes = byteData.buffer.asUint8List();
+      return await _convertPngBytesToIco(bytes);
+    } catch (e) {
+      debugPrint('无法从 assets 加载图标: $e');
+    }
+    
+    return null;
+  }
+
+  /// 将 PNG 文件转换为 ICO 格式
+  Future<String?> _convertPngToIco(String pngPath) async {
+    try {
+      final pngFile = File(pngPath);
+      final bytes = await pngFile.readAsBytes();
+      return await _convertPngBytesToIco(bytes);
+    } catch (e) {
+      debugPrint('PNG 转 ICO 失败: $e');
+      return null;
+    }
+  }
+
+  /// 将 PNG 字节数据转换为 ICO 格式
+  Future<String?> _convertPngBytesToIco(Uint8List pngBytes) async {
+    try {
+      // 解码 PNG
+      final image = img.decodeImage(pngBytes);
+      if (image == null) {
+        debugPrint('无法解码 PNG 图像');
+        return null;
+      }
+      
+      // 调整大小为 32x32（托盘图标标准尺寸）
+      final resized = img.copyResize(image, width: 32, height: 32);
+      
+      // 编码为 ICO
+      final icoBytes = img.encodeIco(resized);
+      
+      // 保存到临时目录
+      final tempDir = await getTemporaryDirectory();
+      final icoPath = '${tempDir.path}/app_icon.ico';
+      final icoFile = File(icoPath);
+      await icoFile.writeAsBytes(icoBytes);
+      
+      debugPrint('PNG 已转换为 ICO: $icoPath');
+      return icoPath;
+    } catch (e) {
+      debugPrint('PNG 转 ICO 失败: $e');
+      return null;
     }
   }
 

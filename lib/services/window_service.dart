@@ -42,6 +42,7 @@ class WindowService with WindowListener {
   bool _isHiddenAtEdge = false;
   bool _isDragging = false; // 是否正在拖拽窗口
   Timer? _mouseCheckTimer;
+  Timer? _dragEndDebounceTimer; // 拖拽结束防抖定时器
   Offset _normalPosition = Offset.zero; // 正常位置（未隐藏时）
   Size _windowSize = const Size(1200, 800);
   
@@ -300,6 +301,7 @@ class WindowService with WindowListener {
     if (!isWindows) return;
 
     _mouseCheckTimer?.cancel();
+    _dragEndDebounceTimer?.cancel();
     if (_trayInitialized) {
       await _systemTray.destroy();
     }
@@ -441,6 +443,7 @@ class WindowService with WindowListener {
 
   /// 检测窗口是否处于屏幕边缘（基于当前显示器）
   /// 返回贴边方向
+  /// 优先级：上 > 左 > 右
   EdgeDirection _detectWindowEdge(Offset windowPos, Size windowSize) {
     const threshold = 10.0; // 窗口距离屏幕边缘的阈值
     
@@ -448,17 +451,17 @@ class WindowService with WindowListener {
     final displayRight = _currentDisplayBounds.right;
     final displayTop = _currentDisplayBounds.top;
     
-    // 左边缘：窗口左边贴着显示器左边
+    // 上边缘优先：窗口上边贴着显示器上边
+    if (windowPos.dy <= displayTop + threshold) {
+      return EdgeDirection.top;
+    }
+    // 左边缘次之：窗口左边贴着显示器左边
     if (windowPos.dx <= displayLeft + threshold) {
       return EdgeDirection.left;
     }
-    // 右边缘：窗口右边贴着显示器右边
+    // 右边缘最后：窗口右边贴着显示器右边
     if (windowPos.dx + windowSize.width >= displayRight - threshold) {
       return EdgeDirection.right;
-    }
-    // 上边缘：窗口上边贴着显示器上边
-    if (windowPos.dy <= displayTop + threshold) {
-      return EdgeDirection.top;
     }
     
     return EdgeDirection.none;
@@ -594,8 +597,15 @@ class WindowService with WindowListener {
   }
 
   /// 通知结束拖拽窗口
+  /// 注意：由于 windowManager.startDragging() 会接管鼠标事件，
+  /// Flutter 的 onPanEnd 可能不会触发，所以主要依赖 onWindowMoved 的防抖检测
   Future<void> notifyDragEnd() async {
+    // 取消防抖定时器，立即处理
+    _dragEndDebounceTimer?.cancel();
+    
+    if (!_isDragging) return; // 已经处理过了
     _isDragging = false;
+    
     // 恢复最大化功能
     if (_edgeHideEnabled) {
       await windowManager.setMaximizable(true);
@@ -692,13 +702,26 @@ class WindowService with WindowListener {
 
   @override
   void onWindowMoved() {
-    // 窗口移动完成后检测贴边（拖拽结束）
-    if (_edgeHideEnabled && !_isHiddenAtEdge && _isDragging) {
-      // 延迟一点执行，确保拖拽真正结束
-      Future.delayed(const Duration(milliseconds: 50), () {
-        notifyDragEnd();
+    // 使用防抖检测拖拽结束：每次移动都重置定时器，停止移动 150ms 后认为拖拽结束
+    if (_edgeHideEnabled && _isDragging && !_isHiddenAtEdge) {
+      _dragEndDebounceTimer?.cancel();
+      _dragEndDebounceTimer = Timer(const Duration(milliseconds: 150), () {
+        _onDragEndDetected();
       });
     }
+  }
+
+  /// 检测到拖拽结束（通过防抖）
+  Future<void> _onDragEndDetected() async {
+    if (!_isDragging) return;
+    _isDragging = false;
+    
+    // 恢复最大化功能
+    await windowManager.setMaximizable(true);
+    // 贴边回弹
+    await _snapToEdgeIfNeeded();
+    
+    debugPrint('拖拽结束（防抖检测）');
   }
 
   @override

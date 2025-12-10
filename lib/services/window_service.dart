@@ -785,7 +785,7 @@ class WindowService with WindowListener {
   @override
   void onWindowMoved() {
     // 窗口移动事件不做任何处理
-    // 回弹只在 notifyDragEnd() 中执行（鼠标松开时由 onPanEnd 调用）
+    // 越界回弹在准备隐藏前执行
   }
 
   @override

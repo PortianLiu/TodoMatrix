@@ -407,6 +407,12 @@ class WindowService with WindowListener {
 
   /// 更新当前窗口所在显示器的边界
   /// 返回 true 表示窗口只在一个显示器上，false 表示窗口同时处于多个显示器
+  /// 
+  /// 使用四角检测策略：
+  /// - 检测窗口四个角分别在哪个显示器
+  /// - 出界的角不在任何显示器内，不计入
+  /// - 如果四角涉及多个显示器，说明跨屏
+  /// - _currentDisplayBounds 设置为四角所在的那个显示器（而非中心点）
   Future<bool> _updateCurrentDisplayBounds(Offset windowPos) async {
     try {
       final displays = await screenRetriever.getAllDisplays();
@@ -420,12 +426,6 @@ class WindowService with WindowListener {
         Offset(windowPos.dx + _windowSize.width - inset, windowPos.dy + _windowSize.height - inset), // 右下
       ];
       
-      // 窗口中心点
-      final windowCenter = Offset(
-        windowPos.dx + _windowSize.width / 2,
-        windowPos.dy + _windowSize.height / 2,
-      );
-      
       // 构建所有显示器边界列表
       final displayBounds = <Rect>[];
       for (final display in displays) {
@@ -437,35 +437,8 @@ class WindowService with WindowListener {
         ));
       }
       
-      // 找到窗口中心点所在的显示器
-      Rect? foundBounds;
-      for (final bounds in displayBounds) {
-        if (bounds.contains(windowCenter)) {
-          foundBounds = bounds;
-          break;
-        }
-      }
-      
-      if (foundBounds == null && displayBounds.isNotEmpty) {
-        // 如果中心点不在任何显示器内，使用第一个显示器
-        foundBounds = displayBounds.first;
-      }
-      
-      if (foundBounds == null) {
-        // 如果没找到，使用主显示器
-        final primary = await screenRetriever.getPrimaryDisplay();
-        foundBounds = Rect.fromLTWH(
-          0, 0,
-          primary.visibleSize?.width ?? primary.size.width,
-          primary.visibleSize?.height ?? primary.size.height,
-        );
-      }
-      
-      _currentDisplayBounds = foundBounds;
-      
-      // 策略A：检测窗口四个角涉及几个显示器
+      // 检测窗口四个角涉及几个显示器
       // 出界的角不在任何显示器内，不会被计入
-      // 只有跨屏时才会涉及多个显示器
       final cornerDisplays = <int>{};
       for (final corner in corners) {
         for (int i = 0; i < displayBounds.length; i++) {
@@ -477,10 +450,24 @@ class WindowService with WindowListener {
       }
       
       // 涉及多个显示器（length >= 2）说明跨屏
-      // 出界但在同一显示器（length <= 1）允许贴边
       final isOnSingleDisplay = cornerDisplays.length <= 1;
       
-      debugPrint('四角所在显示器: $cornerDisplays, 跨屏: ${!isOnSingleDisplay}');
+      // 设置 _currentDisplayBounds 为四角所在的那个显示器
+      if (cornerDisplays.isNotEmpty) {
+        // 使用四角所在的显示器（取第一个）
+        _currentDisplayBounds = displayBounds[cornerDisplays.first];
+      } else if (displayBounds.isNotEmpty) {
+        // 如果所有角都出界了，使用主显示器
+        final primary = await screenRetriever.getPrimaryDisplay();
+        _currentDisplayBounds = Rect.fromLTWH(
+          primary.visiblePosition?.dx ?? 0,
+          primary.visiblePosition?.dy ?? 0,
+          primary.visibleSize?.width ?? primary.size.width,
+          primary.visibleSize?.height ?? primary.size.height,
+        );
+      }
+      
+      debugPrint('四角所在显示器: $cornerDisplays, 当前显示器: $_currentDisplayBounds, 跨屏: ${!isOnSingleDisplay}');
       return isOnSingleDisplay;
     } catch (e) {
       debugPrint('获取显示器信息失败: $e');

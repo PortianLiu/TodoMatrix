@@ -45,10 +45,14 @@ class WindowService with WindowListener {
   Offset _normalPosition = Offset.zero; // 正常位置（未隐藏时）
   Size _windowSize = const Size(1200, 800);
   
-  /// 当前窗口所在显示器的工作区域
-  /// 多屏支持：根据窗口中心点所在的显示器动态更新
+  /// 当前窗口所在显示器的工作区域（不含任务栏）
+  /// 多屏支持：根据窗口四角所在的显示器动态更新
   /// 支持任意显示器布局（左、右、上、下、不规则）
   Rect _currentDisplayBounds = Rect.zero;
+  
+  /// 当前窗口所在显示器的完整区域（含任务栏）
+  /// 用于检测鼠标是否在任务栏区域
+  Rect _currentDisplayFullBounds = Rect.zero;
 
   /// 应用程序根目录（用于托盘图标路径）
   String? _appDir;
@@ -426,14 +430,24 @@ class WindowService with WindowListener {
         Offset(windowPos.dx + _windowSize.width - inset, windowPos.dy + _windowSize.height - inset), // 右下
       ];
       
-      // 构建所有显示器边界列表
+      // 构建所有显示器边界列表（可见区域，不含任务栏）
       final displayBounds = <Rect>[];
+      // 构建所有显示器完整边界列表（含任务栏）
+      final displayFullBounds = <Rect>[];
       for (final display in displays) {
         displayBounds.add(Rect.fromLTWH(
           display.visiblePosition?.dx ?? 0,
           display.visiblePosition?.dy ?? 0,
           display.visibleSize?.width ?? display.size.width,
           display.visibleSize?.height ?? display.size.height,
+        ));
+        // 完整边界：使用 size 而非 visibleSize
+        // 注意：position 可能与 visiblePosition 不同，但通常相同
+        displayFullBounds.add(Rect.fromLTWH(
+          display.visiblePosition?.dx ?? 0,
+          display.visiblePosition?.dy ?? 0,
+          display.size.width,
+          display.size.height,
         ));
       }
       
@@ -452,10 +466,12 @@ class WindowService with WindowListener {
       // 涉及多个显示器（length >= 2）说明跨屏
       final isOnSingleDisplay = cornerDisplays.length <= 1;
       
-      // 设置 _currentDisplayBounds 为四角所在的那个显示器
+      // 设置 _currentDisplayBounds 和 _currentDisplayFullBounds 为四角所在的那个显示器
       if (cornerDisplays.isNotEmpty) {
         // 使用四角所在的显示器（取第一个）
-        _currentDisplayBounds = displayBounds[cornerDisplays.first];
+        final displayIndex = cornerDisplays.first;
+        _currentDisplayBounds = displayBounds[displayIndex];
+        _currentDisplayFullBounds = displayFullBounds[displayIndex];
       } else if (displayBounds.isNotEmpty) {
         // 如果所有角都出界了，使用主显示器
         final primary = await screenRetriever.getPrimaryDisplay();
@@ -464,6 +480,12 @@ class WindowService with WindowListener {
           primary.visiblePosition?.dy ?? 0,
           primary.visibleSize?.width ?? primary.size.width,
           primary.visibleSize?.height ?? primary.size.height,
+        );
+        _currentDisplayFullBounds = Rect.fromLTWH(
+          primary.visiblePosition?.dx ?? 0,
+          primary.visiblePosition?.dy ?? 0,
+          primary.size.width,
+          primary.size.height,
         );
       }
       
@@ -499,6 +521,15 @@ class WindowService with WindowListener {
     }
     
     return EdgeDirection.none;
+  }
+
+  /// 检测鼠标是否在任务栏区域
+  /// 任务栏区域 = 完整屏幕边界 - 可见工作区域
+  bool _isMouseInTaskbar(Offset cursorPos) {
+    // 鼠标在完整屏幕内，但不在可见工作区域内，说明在任务栏上
+    final inFullBounds = _currentDisplayFullBounds.contains(cursorPos);
+    final inVisibleBounds = _currentDisplayBounds.contains(cursorPos);
+    return inFullBounds && !inVisibleBounds;
   }
 
   /// 启动鼠标位置检测定时器
@@ -554,7 +585,8 @@ class WindowService with WindowListener {
         final isMouseInWindow = windowRect.contains(cursorPos);
 
         // 鼠标离开窗口区域时，检查窗口是否贴边
-        if (!isMouseInWindow) {
+        // 但如果鼠标在任务栏上，不触发隐藏（避免窗口闪烁）
+        if (!isMouseInWindow && !_isMouseInTaskbar(cursorPos)) {
           // 更新当前显示器边界（窗口可能被拖到其他显示器）
           // 如果窗口跨越多个显示器，不进行贴边操作（避免不同缩放比导致的计算错误）
           final isFullyInDisplay = await _updateCurrentDisplayBounds(windowPos);

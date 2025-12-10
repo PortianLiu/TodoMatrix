@@ -282,8 +282,8 @@ class WindowService with WindowListener {
     final menu = Menu();
     final menuItems = <MenuItemBase>[
       MenuItemLabel(
-        label: '显示窗口',
-        onClicked: (menuItem) => restoreFromTray(),
+        label: '窗口复位',
+        onClicked: (menuItem) => resetWindowPosition(),
       ),
       // 鼠标穿透选项（始终显示，但只有钉住时才能生效）
       MenuItemLabel(
@@ -299,6 +299,38 @@ class WindowService with WindowListener {
 
     await menu.buildFrom(menuItems);
     await _systemTray.setContextMenu(menu);
+  }
+
+  /// 窗口复位：将窗口移动到主显示器中央并显示
+  Future<void> resetWindowPosition() async {
+    if (!isWindows) return;
+
+    // 如果隐藏在边缘，先取消隐藏状态
+    if (_isHiddenAtEdge) {
+      _isHiddenAtEdge = false;
+      _dockedEdge = EdgeDirection.none;
+    }
+
+    // 获取主显示器信息
+    final primary = await screenRetriever.getPrimaryDisplay();
+    final screenWidth = primary.visibleSize?.width ?? primary.size.width;
+    final screenHeight = primary.visibleSize?.height ?? primary.size.height;
+    
+    // 计算居中位置
+    final windowSize = await windowManager.getSize();
+    final centerX = (screenWidth - windowSize.width) / 2;
+    final centerY = (screenHeight - windowSize.height) / 2;
+    
+    // 移动窗口到主显示器中央
+    await windowManager.setPosition(Offset(centerX, centerY));
+    await windowManager.show();
+    await windowManager.focus();
+    
+    _isMinimizedToTray = false;
+    _normalPosition = Offset(centerX, centerY);
+    
+    debugPrint('窗口复位到: ($centerX, $centerY)');
+    onShowWindow?.call();
   }
 
   /// 销毁托盘

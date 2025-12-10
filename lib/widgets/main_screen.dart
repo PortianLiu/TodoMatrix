@@ -114,8 +114,9 @@ class _MainScreenState extends ConsumerState<MainScreen> {
               ),
             ),
             const Spacer(),
-            // 工具栏按钮（图钉在最左边）
+            // 工具栏按钮（图钉在最左边，贴边隐藏在第二位）
             _buildPinButton(),
+            _buildEdgeHideButton(),
             _buildColumnsSelector(),
             IconButton(
               icon: Icon(Icons.add, size: 20, color: Theme.of(context).colorScheme.onPrimaryContainer),
@@ -258,7 +259,7 @@ class _MainScreenState extends ConsumerState<MainScreen> {
 
     return IconButton(
       icon: Transform.rotate(
-        angle: isPinned ? 0 : math.pi / 6, // 未钉住时倾斜 30 度
+        angle: isPinned ? 0 : math.pi * 2 / 9, // 未钉住时倾斜 40 度
         child: Icon(
           isPinned ? Icons.push_pin : Icons.push_pin_outlined,
           size: 20,
@@ -271,6 +272,39 @@ class _MainScreenState extends ConsumerState<MainScreen> {
       onPressed: _togglePinToDesktop,
       visualDensity: VisualDensity.compact,
     );
+  }
+
+  /// 构建贴边隐藏按钮
+  Widget _buildEdgeHideButton() {
+    final settings = ref.watch(appSettingsProvider);
+    final isEnabled = settings.edgeHideEnabled;
+
+    return IconButton(
+      icon: Icon(
+        isEnabled ? Icons.dock : Icons.dock_outlined,
+        size: 20,
+        color: isEnabled
+            ? Theme.of(context).colorScheme.primary
+            : Theme.of(context).colorScheme.onPrimaryContainer,
+      ),
+      tooltip: isEnabled ? '关闭贴边隐藏' : '开启贴边隐藏',
+      onPressed: _toggleEdgeHide,
+      visualDensity: VisualDensity.compact,
+    );
+  }
+
+  /// 切换贴边隐藏状态
+  Future<void> _toggleEdgeHide() async {
+    final settings = ref.read(appSettingsProvider);
+    final newValue = !settings.edgeHideEnabled;
+    
+    // 更新设置
+    ref.read(appDataProvider.notifier).updateSettings(
+      settings.copyWith(edgeHideEnabled: newValue),
+    );
+    
+    // 应用窗口设置
+    await WindowService.instance.setEdgeHide(newValue);
   }
 
   /// 切换钉在桌面状态

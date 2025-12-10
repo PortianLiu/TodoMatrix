@@ -408,7 +408,7 @@ class WindowService with WindowListener {
   }
 
   /// 更新当前窗口所在显示器的边界
-  /// 返回 true 表示窗口完全在一个显示器内，false 表示窗口跨越多个显示器
+  /// 返回 true 表示窗口只在一个显示器上，false 表示窗口同时处于多个显示器
   Future<bool> _updateCurrentDisplayBounds(Offset windowPos) async {
     try {
       final displays = await screenRetriever.getAllDisplays();
@@ -426,6 +426,8 @@ class WindowService with WindowListener {
       );
       
       Rect? foundBounds;
+      int overlappingDisplays = 0; // 窗口覆盖的显示器数量
+      
       for (final display in displays) {
         final bounds = Rect.fromLTWH(
           display.visiblePosition?.dx ?? 0,
@@ -433,9 +435,14 @@ class WindowService with WindowListener {
           display.visibleSize?.width ?? display.size.width,
           display.visibleSize?.height ?? display.size.height,
         );
+        
+        // 检查窗口是否与此显示器有交集
+        if (windowRect.overlaps(bounds)) {
+          overlappingDisplays++;
+        }
+        
         if (bounds.contains(windowCenter)) {
           foundBounds = bounds;
-          break;
         }
       }
       
@@ -451,18 +458,15 @@ class WindowService with WindowListener {
       
       _currentDisplayBounds = foundBounds;
       
-      // 检查窗口是否完全在当前显示器内
-      // 如果窗口跨越了显示器边界，返回 false
-      final isFullyContained = foundBounds.contains(windowRect.topLeft) &&
-          foundBounds.contains(windowRect.topRight) &&
-          foundBounds.contains(windowRect.bottomLeft) &&
-          foundBounds.contains(windowRect.bottomRight);
+      // 窗口只在一个显示器上时返回 true
+      // 窗口同时处于多个显示器时返回 false（跨屏）
+      final isOnSingleDisplay = overlappingDisplays <= 1;
       
-      debugPrint('当前显示器边界: $_currentDisplayBounds, 窗口完全在内: $isFullyContained');
-      return isFullyContained;
+      debugPrint('当前显示器边界: $_currentDisplayBounds, 覆盖显示器数: $overlappingDisplays');
+      return isOnSingleDisplay;
     } catch (e) {
       debugPrint('获取显示器信息失败: $e');
-      return false;
+      return true; // 出错时默认允许贴边
     }
   }
 
@@ -620,6 +624,7 @@ class WindowService with WindowListener {
 
   /// 通知开始拖拽窗口
   void notifyDragStart() {
+    debugPrint('拖拽开始');
     _isDragging = true;
     // 拖拽时禁用最大化，防止触发 Windows Snap
     if (_edgeHideEnabled) {
@@ -631,6 +636,7 @@ class WindowService with WindowListener {
   /// 注意：由于 windowManager.startDragging() 会接管鼠标事件，
   /// Flutter 的 onPanEnd 可能不会触发，所以主要依赖 onWindowMoved 的防抖检测
   Future<void> notifyDragEnd() async {
+    debugPrint('notifyDragEnd 被调用, _isDragging=$_isDragging');
     // 取消防抖定时器，立即处理
     _dragEndDebounceTimer?.cancel();
     
@@ -738,10 +744,17 @@ class WindowService with WindowListener {
 
   @override
   void onWindowMoved() {
-    // 使用防抖检测拖拽结束：每次移动都重置定时器，停止移动 150ms 后认为拖拽结束
-    if (_edgeHideEnabled && _isDragging && !_isHiddenAtEdge) {
+    // 使用防抖检测拖拽结束：每次移动都重置定时器，停止移动 200ms 后认为拖拽结束
+    if (_edgeHideEnabled && !_isHiddenAtEdge) {
+      // 如果还没标记为拖拽状态，先标记
+      if (!_isDragging) {
+        _isDragging = true;
+        windowManager.setMaximizable(false);
+        debugPrint('检测到窗口移动，标记为拖拽状态');
+      }
+      
       _dragEndDebounceTimer?.cancel();
-      _dragEndDebounceTimer = Timer(const Duration(milliseconds: 150), () {
+      _dragEndDebounceTimer = Timer(const Duration(milliseconds: 200), () {
         _onDragEndDetected();
       });
     }
@@ -749,6 +762,7 @@ class WindowService with WindowListener {
 
   /// 检测到拖拽结束（通过防抖）
   Future<void> _onDragEndDetected() async {
+    debugPrint('防抖检测：拖拽结束, _isDragging=$_isDragging');
     if (!_isDragging) return;
     _isDragging = false;
     
@@ -756,8 +770,6 @@ class WindowService with WindowListener {
     await windowManager.setMaximizable(true);
     // 贴边回弹
     await _snapToEdgeIfNeeded();
-    
-    debugPrint('拖拽结束（防抖检测）');
   }
 
   @override

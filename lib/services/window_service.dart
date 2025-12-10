@@ -42,7 +42,6 @@ class WindowService with WindowListener {
   bool _isHiddenAtEdge = false;
   bool _isDragging = false; // 是否正在拖拽窗口
   Timer? _mouseCheckTimer;
-  Timer? _dragEndDebounceTimer; // 拖拽结束防抖定时器
   Offset _normalPosition = Offset.zero; // 正常位置（未隐藏时）
   Size _windowSize = const Size(1200, 800);
   
@@ -303,7 +302,6 @@ class WindowService with WindowListener {
     if (!isWindows) return;
 
     _mouseCheckTimer?.cancel();
-    _dragEndDebounceTimer?.cancel();
     if (_trayInitialized) {
       await _systemTray.destroy();
     }

@@ -82,7 +82,15 @@ class _MainScreenState extends ConsumerState<MainScreen> {
   /// 构建自定义标题栏（Windows）- 仅用于拖拽和工具栏
   Widget _buildCustomTitleBar() {
     return GestureDetector(
-      onPanStart: (_) => windowManager.startDragging(),
+      onPanStart: (_) {
+        // 通知开始拖拽
+        WindowService.instance.notifyDragStart();
+        windowManager.startDragging();
+      },
+      onPanEnd: (_) {
+        // 通知结束拖拽
+        WindowService.instance.notifyDragEnd();
+      },
       child: Container(
         height: 56, // 与 AppBar 默认高度一致
         color: Theme.of(context).colorScheme.primaryContainer,

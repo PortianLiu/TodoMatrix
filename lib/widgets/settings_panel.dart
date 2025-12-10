@@ -77,7 +77,15 @@ class SettingsPanel extends ConsumerWidget {
     return PreferredSize(
       preferredSize: const Size.fromHeight(56),
       child: GestureDetector(
-        onPanStart: (_) => windowManager.startDragging(),
+        onPanStart: (_) {
+          // 通知开始拖拽
+          WindowService.instance.notifyDragStart();
+          windowManager.startDragging();
+        },
+        onPanEnd: (_) {
+          // 通知结束拖拽
+          WindowService.instance.notifyDragEnd();
+        },
         child: AppBar(
           title: const Text('设置'),
         ),

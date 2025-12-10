@@ -35,6 +35,7 @@ class WindowService with WindowListener {
   bool _edgeHideEnabled = false;
   EdgeDirection _dockedEdge = EdgeDirection.none; // 窗口停靠的边缘
   bool _isHiddenAtEdge = false;
+  bool _isDragging = false; // 是否正在拖拽窗口
   Timer? _mouseCheckTimer;
   Offset _normalPosition = Offset.zero; // 正常位置（未隐藏时）
   Size _windowSize = const Size(1200, 800);
@@ -108,36 +109,31 @@ class WindowService with WindowListener {
   }
 
   /// 初始化系统托盘
-  /// 支持 .ico 或 .png 格式的图标文件
+  /// Windows 平台必须使用 .ico 格式图标
   Future<void> _initSystemTray() async {
     if (_trayInitialized) return;
 
     try {
-      // 使用绝对路径查找图标文件
+      // Windows 平台必须使用 .ico 格式
+      // 查找图标文件（只查找 .ico）
       String? iconPath;
       final basePath = _appDir ?? Directory.current.path;
       
-      for (final relativePath in ['data/flutter_assets/assets/app_icon.ico', 'data/flutter_assets/assets/app_icon.png']) {
-        final fullPath = '$basePath/$relativePath';
-        if (await File(fullPath).exists()) {
-          iconPath = fullPath;
-          break;
-        }
-      }
-
-      // 开发模式下尝试相对路径
-      if (iconPath == null) {
-        for (final path in ['assets/app_icon.ico', 'assets/app_icon.png']) {
-          if (await File(path).exists()) {
-            iconPath = path;
-            break;
-          }
-        }
+      // 打包后的路径
+      final releaseIcoPath = '$basePath/data/flutter_assets/assets/app_icon.ico';
+      // 开发模式路径
+      const devIcoPath = 'assets/app_icon.ico';
+      
+      if (await File(releaseIcoPath).exists()) {
+        iconPath = releaseIcoPath;
+      } else if (await File(devIcoPath).exists()) {
+        iconPath = devIcoPath;
       }
 
       if (iconPath == null) {
         debugPrint('托盘图标文件不存在，托盘功能已禁用');
-        debugPrint('请在 assets 目录下放置 app_icon.ico 或 app_icon.png 文件');
+        debugPrint('Windows 平台必须使用 .ico 格式图标');
+        debugPrint('请在 assets 目录下放置 app_icon.ico 文件');
         return;
       }
 
@@ -253,7 +249,7 @@ class WindowService with WindowListener {
 
   /// 设置贴边隐藏
   /// 类似旧版 Windows QQ 的效果：
-  /// 1. 窗口拖到屏幕边缘（左/右/上）时，记录为"贴边"状态
+  /// 1. 拖拽窗口时，当鼠标到达屏幕边缘（左/右/上）时，记录为"贴边"状态
   /// 2. 鼠标离开窗口后，窗口自动隐藏到边缘，只露出几像素
   /// 3. 鼠标移到边缘时，窗口自动滑出
   Future<void> setEdgeHide(bool enabled) async {
@@ -267,8 +263,9 @@ class WindowService with WindowListener {
       // 更新屏幕尺寸
       final primaryDisplay = await screenRetriever.getPrimaryDisplay();
       _screenSize = primaryDisplay.size;
-      // 检测当前是否已贴边
-      _detectDockedEdge();
+      // 重置贴边状态
+      _dockedEdge = EdgeDirection.none;
+      _isHiddenAtEdge = false;
       // 启动鼠标位置检测
       _startMouseCheckTimer();
     } else {
@@ -280,33 +277,59 @@ class WindowService with WindowListener {
       }
       _dockedEdge = EdgeDirection.none;
       _isHiddenAtEdge = false;
+      _isDragging = false;
     }
   }
 
-  /// 检测窗口是否贴边
-  /// 只有窗口真正贴到屏幕边缘时才算贴边
-  void _detectDockedEdge() {
-    const threshold = 10.0; // 贴边判定阈值
-    
-    // 左边缘：窗口左边距离屏幕左边很近
-    if (_normalPosition.dx <= threshold) {
-      _dockedEdge = EdgeDirection.left;
-      debugPrint('检测到贴边: 左');
-    }
-    // 右边缘：窗口右边距离屏幕右边很近
-    else if (_normalPosition.dx + _windowSize.width >= _screenSize.width - threshold) {
-      _dockedEdge = EdgeDirection.right;
-      debugPrint('检测到贴边: 右');
-    }
-    // 上边缘：窗口上边距离屏幕上边很近
-    else if (_normalPosition.dy <= threshold) {
-      _dockedEdge = EdgeDirection.top;
-      debugPrint('检测到贴边: 上');
-    }
-    // 不贴边
-    else {
-      _dockedEdge = EdgeDirection.none;
-      debugPrint('未贴边，位置: $_normalPosition, 窗口大小: $_windowSize, 屏幕: $_screenSize');
+  /// 在拖拽结束时检测鼠标是否在屏幕边缘
+  /// 这是贴边的核心判定逻辑
+  Future<void> _checkEdgeOnDragEnd() async {
+    if (!_edgeHideEnabled) return;
+
+    try {
+      final cursorPos = await screenRetriever.getCursorScreenPoint();
+      final windowPos = await windowManager.getPosition();
+      final windowSize = await windowManager.getSize();
+      
+      // 更新窗口信息
+      _normalPosition = windowPos;
+      _windowSize = windowSize;
+      
+      // 更新屏幕尺寸
+      final primaryDisplay = await screenRetriever.getPrimaryDisplay();
+      _screenSize = primaryDisplay.size;
+      
+      const edgeThreshold = 5.0; // 鼠标距离屏幕边缘的阈值
+      
+      // 检测鼠标是否在屏幕边缘
+      if (cursorPos.dx <= edgeThreshold) {
+        // 鼠标在左边缘
+        _dockedEdge = EdgeDirection.left;
+        // 将窗口贴到左边缘
+        _normalPosition = Offset(0, windowPos.dy);
+        await windowManager.setPosition(_normalPosition);
+        debugPrint('贴边: 左（鼠标位置: $cursorPos）');
+      } else if (cursorPos.dx >= _screenSize.width - edgeThreshold) {
+        // 鼠标在右边缘
+        _dockedEdge = EdgeDirection.right;
+        // 将窗口贴到右边缘
+        _normalPosition = Offset(_screenSize.width - windowSize.width, windowPos.dy);
+        await windowManager.setPosition(_normalPosition);
+        debugPrint('贴边: 右（鼠标位置: $cursorPos）');
+      } else if (cursorPos.dy <= edgeThreshold) {
+        // 鼠标在上边缘
+        _dockedEdge = EdgeDirection.top;
+        // 将窗口贴到上边缘
+        _normalPosition = Offset(windowPos.dx, 0);
+        await windowManager.setPosition(_normalPosition);
+        debugPrint('贴边: 上（鼠标位置: $cursorPos）');
+      } else {
+        // 不在边缘，取消贴边状态
+        _dockedEdge = EdgeDirection.none;
+        debugPrint('未贴边（鼠标位置: $cursorPos）');
+      }
+    } catch (e) {
+      debugPrint('检测贴边失败: $e');
     }
   }
 
@@ -314,7 +337,7 @@ class WindowService with WindowListener {
   void _startMouseCheckTimer() {
     _mouseCheckTimer?.cancel();
     _mouseCheckTimer = Timer.periodic(
-      const Duration(milliseconds: 150),
+      const Duration(milliseconds: 100),
       (_) => _checkMousePosition(),
     );
   }
@@ -322,8 +345,6 @@ class WindowService with WindowListener {
   /// 检测鼠标位置，决定是否显示/隐藏窗口
   Future<void> _checkMousePosition() async {
     if (!_edgeHideEnabled) return;
-    // 如果没有贴边，不需要隐藏
-    if (_dockedEdge == EdgeDirection.none && !_isHiddenAtEdge) return;
 
     try {
       final cursorPos = await screenRetriever.getCursorScreenPoint();
@@ -331,26 +352,20 @@ class WindowService with WindowListener {
       if (_isHiddenAtEdge) {
         // 当前隐藏状态，检测鼠标是否靠近边缘触发显示
         bool shouldShow = false;
-        const triggerZone = 5.0; // 触发显示的区域
+        const triggerZone = 3.0; // 触发显示的区域（像素）
         
         switch (_dockedEdge) {
           case EdgeDirection.left:
-            // 鼠标在屏幕最左边，且 Y 坐标在窗口范围内
-            shouldShow = cursorPos.dx <= triggerZone &&
-                cursorPos.dy >= _normalPosition.dy &&
-                cursorPos.dy <= _normalPosition.dy + _windowSize.height;
+            // 鼠标在屏幕最左边
+            shouldShow = cursorPos.dx <= triggerZone;
             break;
           case EdgeDirection.right:
             // 鼠标在屏幕最右边
-            shouldShow = cursorPos.dx >= _screenSize.width - triggerZone &&
-                cursorPos.dy >= _normalPosition.dy &&
-                cursorPos.dy <= _normalPosition.dy + _windowSize.height;
+            shouldShow = cursorPos.dx >= _screenSize.width - triggerZone;
             break;
           case EdgeDirection.top:
             // 鼠标在屏幕最上边
-            shouldShow = cursorPos.dy <= triggerZone &&
-                cursorPos.dx >= _normalPosition.dx &&
-                cursorPos.dx <= _normalPosition.dx + _windowSize.width;
+            shouldShow = cursorPos.dy <= triggerZone;
             break;
           case EdgeDirection.none:
             break;
@@ -359,13 +374,13 @@ class WindowService with WindowListener {
         if (shouldShow) {
           await _showFromEdge();
         }
-      } else if (_dockedEdge != EdgeDirection.none) {
-        // 当前显示状态且已贴边，检测鼠标是否离开窗口
+      } else if (_dockedEdge != EdgeDirection.none && !_isDragging) {
+        // 当前显示状态且已贴边且不在拖拽，检测鼠标是否离开窗口
         final windowPos = await windowManager.getPosition();
         final windowSize = await windowManager.getSize();
         
         // 窗口区域（加一点边距防止误触发）
-        const margin = 10.0;
+        const margin = 15.0;
         final windowRect = Rect.fromLTWH(
           windowPos.dx - margin,
           windowPos.dy - margin,
@@ -424,6 +439,18 @@ class WindowService with WindowListener {
     debugPrint('从边缘显示: $_normalPosition');
   }
 
+  /// 通知开始拖拽窗口
+  void notifyDragStart() {
+    _isDragging = true;
+  }
+
+  /// 通知结束拖拽窗口
+  Future<void> notifyDragEnd() async {
+    _isDragging = false;
+    // 拖拽结束时检测是否贴边
+    await _checkEdgeOnDragEnd();
+  }
+
   // WindowListener 回调
   @override
   void onWindowClose() async {
@@ -466,11 +493,11 @@ class WindowService with WindowListener {
 
   @override
   void onWindowMoved() {
-    // 窗口移动后更新位置记录
-    if (_edgeHideEnabled && !_isHiddenAtEdge) {
-      windowManager.getPosition().then((pos) {
-        _normalPosition = pos;
-        _detectDockedEdge();
+    // 窗口移动完成后检测贴边（拖拽结束）
+    if (_edgeHideEnabled && !_isHiddenAtEdge && _isDragging) {
+      // 延迟一点执行，确保拖拽真正结束
+      Future.delayed(const Duration(milliseconds: 50), () {
+        notifyDragEnd();
       });
     }
   }
@@ -481,7 +508,6 @@ class WindowService with WindowListener {
     if (_edgeHideEnabled && !_isHiddenAtEdge) {
       windowManager.getSize().then((size) {
         _windowSize = size;
-        _detectDockedEdge();
       });
     }
   }

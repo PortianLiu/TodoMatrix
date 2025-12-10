@@ -665,8 +665,9 @@ class WindowService with WindowListener {
     }
   }
 
-  /// 贴边回弹：如果窗口靠近边缘，自动吸附到边缘
-  /// 下界回弹：如果窗口下边超出屏幕，只需保证标题栏露出即可
+  /// 越界回弹：如果窗口超出屏幕边界，回弹到屏幕内
+  /// - 左/右/上边出界：完全回弹到屏幕内
+  /// - 下边出界：只需保证标题栏露出即可（约20px）
   Future<void> _snapToEdgeIfNeeded() async {
     if (!_edgeHideEnabled) return;
 
@@ -676,61 +677,61 @@ class WindowService with WindowListener {
       _windowSize = windowSize;
       
       // 更新当前显示器边界
-      // 如果窗口跨越多个显示器，不进行贴边回弹（避免不同缩放比导致的计算错误）
+      // 如果窗口跨越多个显示器，不进行越界回弹（避免不同缩放比导致的计算错误）
       final isOnSingleDisplay = await _updateCurrentDisplayBounds(windowPos);
       if (!isOnSingleDisplay) {
-        debugPrint('窗口跨越多个显示器，跳过贴边回弹');
+        debugPrint('窗口跨越多个显示器，跳过越界回弹');
         return;
       }
       
-      // 检测是否靠近边缘（上、左、右）
-      final edge = _detectWindowEdge(windowPos, windowSize);
+      final displayLeft = _currentDisplayBounds.left;
+      final displayRight = _currentDisplayBounds.right;
+      final displayTop = _currentDisplayBounds.top;
+      final displayBottom = _currentDisplayBounds.bottom;
       
-      // 计算吸附位置
       double newX = windowPos.dx;
       double newY = windowPos.dy;
       bool needSnap = false;
       
-      // 处理上、左、右边缘吸附
-      switch (edge) {
-        case EdgeDirection.left:
-          newX = _currentDisplayBounds.left;
-          needSnap = true;
-          break;
-        case EdgeDirection.right:
-          newX = _currentDisplayBounds.right - windowSize.width;
-          needSnap = true;
-          break;
-        case EdgeDirection.top:
-          newY = _currentDisplayBounds.top;
-          needSnap = true;
-          break;
-        case EdgeDirection.none:
-          break;
+      // 左边出界：窗口左边超出屏幕左边
+      if (windowPos.dx < displayLeft) {
+        newX = displayLeft;
+        needSnap = true;
+        debugPrint('左边出界回弹: ${windowPos.dx} < $displayLeft');
+      }
+      // 右边出界：窗口右边超出屏幕右边
+      else if (windowPos.dx + windowSize.width > displayRight) {
+        newX = displayRight - windowSize.width;
+        needSnap = true;
+        debugPrint('右边出界回弹: ${windowPos.dx + windowSize.width} > $displayRight');
       }
       
-      // 下界回弹：如果窗口下边超出屏幕，保证标题栏露出
-      // visibleSize 已经排除了任务栏，所以 bottom 就是任务栏上方的位置
-      // 回弹后窗口顶部应该在 displayBottom - minVisibleHeight 处
-      const minVisibleHeight = 20.0; // 至少露出的高度（标题栏部分）
-      final displayBottom = _currentDisplayBounds.bottom;
-      final visibleHeight = displayBottom - windowPos.dy; // 窗口在屏幕内的高度
-      
-      if (visibleHeight < minVisibleHeight) {
-        // 窗口露出部分不足，需要回弹
-        // 让窗口顶部位于 displayBottom - minVisibleHeight，即露出任务栏上方 minVisibleHeight 高度
-        newY = displayBottom - minVisibleHeight;
+      // 上边出界：窗口上边超出屏幕上边
+      if (windowPos.dy < displayTop) {
+        newY = displayTop;
         needSnap = true;
-        debugPrint('下界回弹: 露出高度 $visibleHeight < $minVisibleHeight');
+        debugPrint('上边出界回弹: ${windowPos.dy} < $displayTop');
+      }
+      // 下边出界：窗口顶部超出屏幕底部太多，只需露出标题栏
+      else {
+        const minVisibleHeight = 20.0; // 至少露出的高度（标题栏部分）
+        final visibleHeight = displayBottom - windowPos.dy; // 窗口在屏幕内的高度
+        
+        if (visibleHeight < minVisibleHeight) {
+          // 窗口露出部分不足，回弹到露出 minVisibleHeight
+          newY = displayBottom - minVisibleHeight;
+          needSnap = true;
+          debugPrint('下边出界回弹: 露出高度 $visibleHeight < $minVisibleHeight');
+        }
       }
       
       if (needSnap) {
         final snappedPos = Offset(newX, newY);
         await windowManager.setPosition(snappedPos);
-        debugPrint('贴边回弹: $snappedPos (边缘: $edge)');
+        debugPrint('越界回弹: $snappedPos');
       }
     } catch (e) {
-      debugPrint('贴边回弹失败: $e');
+      debugPrint('越界回弹失败: $e');
     }
   }
 

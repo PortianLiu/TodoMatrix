@@ -285,10 +285,10 @@ class _MainScreenState extends ConsumerState<MainScreen> {
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        // 1. text_select_jump_to_end
+        // 1. switch_right (类似跳到末尾)
         IconButton(
-          icon: Icon(Icons.text_select_jump_to_end, size: 20, color: iconColor),
-          tooltip: '图标1: text_select_jump_to_end',
+          icon: Icon(Icons.switch_right, size: 20, color: iconColor),
+          tooltip: '图标1: switch_right',
           onPressed: _toggleEdgeHide,
           visualDensity: VisualDensity.compact,
         ),

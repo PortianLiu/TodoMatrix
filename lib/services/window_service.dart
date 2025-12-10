@@ -465,8 +465,9 @@ class WindowService with WindowListener {
       
       _currentDisplayBounds = foundBounds;
       
-      // 策略A：检测窗口四个角是否都在同一个显示器上
-      // 找出每个角所在的显示器索引
+      // 策略A：检测窗口四个角涉及几个显示器
+      // 出界的角不在任何显示器内，不会被计入
+      // 只有跨屏时才会涉及多个显示器
       final cornerDisplays = <int>{};
       for (final corner in corners) {
         for (int i = 0; i < displayBounds.length; i++) {
@@ -477,10 +478,11 @@ class WindowService with WindowListener {
         }
       }
       
-      // 如果四个角在不同的显示器上，说明跨屏
+      // 涉及多个显示器（length >= 2）说明跨屏
+      // 出界但在同一显示器（length <= 1）允许贴边
       final isOnSingleDisplay = cornerDisplays.length <= 1;
       
-      debugPrint('当前显示器边界: $_currentDisplayBounds, 四角所在显示器: $cornerDisplays');
+      debugPrint('四角所在显示器: $cornerDisplays, 跨屏: ${!isOnSingleDisplay}');
       return isOnSingleDisplay;
     } catch (e) {
       debugPrint('获取显示器信息失败: $e');

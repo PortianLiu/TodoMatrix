@@ -562,11 +562,19 @@ class WindowService with WindowListener {
   /// 通知开始拖拽窗口
   void notifyDragStart() {
     _isDragging = true;
+    // 拖拽时禁用最大化，防止触发 Windows Snap
+    if (_edgeHideEnabled) {
+      windowManager.setMaximizable(false);
+    }
   }
 
   /// 通知结束拖拽窗口
   Future<void> notifyDragEnd() async {
     _isDragging = false;
+    // 恢复最大化功能
+    if (_edgeHideEnabled) {
+      await windowManager.setMaximizable(true);
+    }
     // 拖拽结束时检测是否贴边
     await _checkEdgeOnDragEnd();
   }

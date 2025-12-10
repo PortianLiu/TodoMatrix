@@ -47,6 +47,8 @@ class WindowService with WindowListener {
   Size _windowSize = const Size(1200, 800);
   
   /// 当前窗口所在显示器的工作区域
+  /// 多屏支持：根据窗口中心点所在的显示器动态更新
+  /// 支持任意显示器布局（左、右、上、下、不规则）
   Rect _currentDisplayBounds = Rect.zero;
 
   /// 应用程序根目录（用于托盘图标路径）

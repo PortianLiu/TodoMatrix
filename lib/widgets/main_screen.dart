@@ -284,12 +284,12 @@ class _MainScreenState extends ConsumerState<MainScreen> {
       icon: Icon(
         Icons.vertical_align_top,
         size: 20,
-        // 开启时颜色加深（primary），关闭时颜色变浅
+        // 关闭时颜色加深（primary），开启时颜色变浅
         color: isEnabled
-            ? Theme.of(context).colorScheme.primary
-            : Theme.of(context).colorScheme.onPrimaryContainer,
+            ? Theme.of(context).colorScheme.onPrimaryContainer
+            : Theme.of(context).colorScheme.primary,
       ),
-      tooltip: isEnabled ? '关闭贴边隐藏' : '开启贴边隐藏',
+      tooltip: '贴边隐藏',
       onPressed: _toggleEdgeHide,
       visualDensity: VisualDensity.compact,
     );

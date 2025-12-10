@@ -98,20 +98,23 @@ class WindowService with WindowListener {
   }
 
   /// 初始化系统托盘
-  /// 注意：需要在 assets 目录下放置 app_icon.ico 文件才能正常工作
+  /// 支持 .ico 或 .png 格式的图标文件
   Future<void> _initSystemTray() async {
     if (_trayInitialized) return;
 
     try {
-      // 检查图标文件是否存在
-      // Windows 需要 .ico 格式的图标
-      // 如果没有图标文件，托盘功能将被禁用
-      final iconPath = 'assets/app_icon.ico';
-      final iconFile = File(iconPath);
-      
-      if (!await iconFile.exists()) {
-        debugPrint('托盘图标文件不存在: $iconPath，托盘功能已禁用');
-        debugPrint('请在 assets 目录下放置 app_icon.ico 文件以启用托盘功能');
+      // 查找图标文件，优先使用 ico，其次 png
+      String? iconPath;
+      for (final path in ['assets/app_icon.ico', 'assets/app_icon.png']) {
+        if (await File(path).exists()) {
+          iconPath = path;
+          break;
+        }
+      }
+
+      if (iconPath == null) {
+        debugPrint('托盘图标文件不存在，托盘功能已禁用');
+        debugPrint('请在 assets 目录下放置 app_icon.ico 或 app_icon.png 文件');
         return;
       }
 

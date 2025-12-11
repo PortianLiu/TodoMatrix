@@ -12,6 +12,7 @@ import '../providers/sync_provider.dart';
 import '../providers/todo_provider.dart';
 import '../services/discovery_service.dart';
 import '../services/window_service.dart';
+import 'color_picker_dialog.dart';
 
 /// 从十六进制字符串解析颜色
 Color _hexToColor(String hex) {
@@ -192,39 +193,13 @@ class SettingsPanel extends ConsumerWidget {
   void _showThemeColorDialog(BuildContext context, WidgetRef ref, String currentColor) {
     showDialog(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('选择主题色'),
-        content: Wrap(
-          spacing: 12,
-          runSpacing: 12,
-          children: ThemeColors.presetColors.map((colorHex) {
-            final color = _hexToColor(colorHex);
-            final isSelected = currentColor == colorHex;
-            return GestureDetector(
-              onTap: () {
-                ref.read(appDataProvider.notifier).setThemeColor(colorHex);
-                Navigator.pop(context);
-              },
-              child: Container(
-                width: 48,
-                height: 48,
-                decoration: BoxDecoration(
-                  color: color,
-                  shape: BoxShape.circle,
-                  border: Border.all(
-                    color: isSelected
-                        ? Theme.of(context).colorScheme.primary
-                        : Colors.grey.shade300,
-                    width: isSelected ? 3 : 1,
-                  ),
-                ),
-                child: isSelected
-                    ? const Icon(Icons.check, color: Colors.white, size: 24)
-                    : null,
-              ),
-            );
-          }).toList(),
-        ),
+      builder: (context) => ColorPickerDialog(
+        title: '选择主题色',
+        currentColor: currentColor,
+        presetColors: ThemeColors.presetColors,
+        onColorSelected: (colorHex) {
+          ref.read(appDataProvider.notifier).setThemeColor(colorHex);
+        },
       ),
     );
   }

@@ -615,17 +615,38 @@ class WindowService with WindowListener {
       final cursorPos = await screenRetriever.getCursorScreenPoint();
 
       if (_isHiddenAtEdge) {
-        // 当前隐藏状态，检测鼠标是否进入隐藏的窗口区域
-        // 窗口隐藏后只露出 visiblePart 像素，鼠标进入这个区域就触发显示
-        final hiddenWindowPos = await windowManager.getPosition();
-        final hiddenWindowRect = Rect.fromLTWH(
-          hiddenWindowPos.dx,
-          hiddenWindowPos.dy,
-          _windowSize.width,
-          _windowSize.height,
-        );
+        // 当前隐藏状态，检测鼠标是否靠近边缘触发显示
+        // 窗口完全隐藏，只检测边缘线上窗口所在的那一段范围
+        bool shouldShow = false;
+        const triggerZone = 3.0; // 触发显示的区域（像素）
 
-        if (hiddenWindowRect.contains(cursorPos)) {
+        switch (_dockedEdge) {
+          case EdgeDirection.left:
+            // 鼠标需要在左边缘，且在窗口的垂直范围内
+            shouldShow =
+                cursorPos.dx <= _currentDisplayBounds.left + triggerZone &&
+                    cursorPos.dy >= _normalPosition.dy &&
+                    cursorPos.dy <= _normalPosition.dy + _windowSize.height;
+            break;
+          case EdgeDirection.right:
+            // 鼠标需要在右边缘，且在窗口的垂直范围内
+            shouldShow =
+                cursorPos.dx >= _currentDisplayBounds.right - triggerZone &&
+                    cursorPos.dy >= _normalPosition.dy &&
+                    cursorPos.dy <= _normalPosition.dy + _windowSize.height;
+            break;
+          case EdgeDirection.top:
+            // 鼠标需要在上边缘，且在窗口的水平范围内
+            shouldShow =
+                cursorPos.dy <= _currentDisplayBounds.top + triggerZone &&
+                    cursorPos.dx >= _normalPosition.dx &&
+                    cursorPos.dx <= _normalPosition.dx + _windowSize.width;
+            break;
+          case EdgeDirection.none:
+            break;
+        }
+
+        if (shouldShow) {
           await _showFromEdge();
           _wasMouseInWindow = true;
         }
@@ -685,29 +706,29 @@ class WindowService with WindowListener {
     if (_dockedEdge == EdgeDirection.none || _isHiddenAtEdge) return;
 
     _isHiddenAtEdge = true;
-    const visiblePart = 3.0; // 露出的部分（像素）
+    // 窗口完全隐藏到屏幕外，不露出任何像素
 
     Offset hiddenPos;
     switch (_dockedEdge) {
       case EdgeDirection.left:
-        // 向左隐藏，只露出右边 3 像素
+        // 向左完全隐藏
         hiddenPos = Offset(
-          _currentDisplayBounds.left - _windowSize.width + visiblePart,
+          _currentDisplayBounds.left - _windowSize.width,
           _normalPosition.dy,
         );
         break;
       case EdgeDirection.right:
-        // 向右隐藏，只露出左边 3 像素
+        // 向右完全隐藏
         hiddenPos = Offset(
-          _currentDisplayBounds.right - visiblePart,
+          _currentDisplayBounds.right,
           _normalPosition.dy,
         );
         break;
       case EdgeDirection.top:
-        // 向上隐藏，只露出下边 3 像素
+        // 向上完全隐藏
         hiddenPos = Offset(
           _normalPosition.dx,
-          _currentDisplayBounds.top - _windowSize.height + visiblePart,
+          _currentDisplayBounds.top - _windowSize.height,
         );
         break;
       case EdgeDirection.none:

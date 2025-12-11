@@ -1,3 +1,4 @@
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -9,11 +10,14 @@ import '../providers/todo_provider.dart';
 class TodoItemWidget extends ConsumerStatefulWidget {
   final String listId;
   final TodoItem item;
+  /// 列表内排序的索引（用于 ReorderableDragStartListener）
+  final int index;
 
   const TodoItemWidget({
     super.key,
     required this.listId,
     required this.item,
+    required this.index,
   });
 
   @override
@@ -22,6 +26,7 @@ class TodoItemWidget extends ConsumerStatefulWidget {
 
 class _TodoItemWidgetState extends ConsumerState<TodoItemWidget> {
   bool _isEditing = false;
+  bool _isMouseDevice = true; // 当前是否是鼠标设备
   late TextEditingController _editController;
 
   @override
@@ -46,39 +51,62 @@ class _TodoItemWidgetState extends ConsumerState<TodoItemWidget> {
 
   @override
   Widget build(BuildContext context) {
-    // 使用 LongPressDraggable 支持跨列表拖拽
+    // 使用 Listener 检测输入设备类型
+    return Listener(
+      onPointerDown: (event) {
+        setState(() {
+          _isMouseDevice = event.kind == PointerDeviceKind.mouse;
+        });
+      },
+      child: _buildContent(),
+    );
+  }
+
+
+  Widget _buildContent() {
+    // 跨列表拖拽（长按触发）
     return LongPressDraggable<Map<String, String>>(
       data: {
         'sourceListId': widget.listId,
         'itemId': widget.item.id,
       },
-      feedback: Material(
-        elevation: 4,
-        borderRadius: BorderRadius.circular(8),
-        child: Container(
-          width: 200,
-          padding: const EdgeInsets.all(12),
-          decoration: BoxDecoration(
-            color: Theme.of(context).colorScheme.primaryContainer,
-            borderRadius: BorderRadius.circular(8),
-          ),
-          child: Text(
-            widget.item.description,
-            style: TextStyle(
-              color: Theme.of(context).colorScheme.onPrimaryContainer,
-            ),
-            maxLines: 2,
-            overflow: TextOverflow.ellipsis,
-          ),
-        ),
-      ),
+      feedback: _buildDragFeedback(),
       childWhenDragging: Opacity(
         opacity: 0.5,
         child: _buildItemContent(),
       ),
       child: GestureDetector(
-        onSecondaryTapUp: (details) => _showContextMenu(context, details),
+        onSecondaryTapUp: (details) => _showContextMenuAt(details.globalPosition),
+        onLongPress: () {
+          // 触摸/笔触场景下长按显示菜单
+          if (!_isMouseDevice) {
+            _showContextMenuAtCenter();
+          }
+        },
         child: _buildItemContent(),
+      ),
+    );
+  }
+
+  Widget _buildDragFeedback() {
+    return Material(
+      elevation: 4,
+      borderRadius: BorderRadius.circular(8),
+      child: Container(
+        width: 200,
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: Theme.of(context).colorScheme.primaryContainer,
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: Text(
+          widget.item.description,
+          style: TextStyle(
+            color: Theme.of(context).colorScheme.onPrimaryContainer,
+          ),
+          maxLines: 2,
+          overflow: TextOverflow.ellipsis,
+        ),
       ),
     );
   }
@@ -94,7 +122,10 @@ class _TodoItemWidgetState extends ConsumerState<TodoItemWidget> {
       ),
       child: ListTile(
         dense: true,
-        leading: _buildLeading(),
+        visualDensity: const VisualDensity(horizontal: -2, vertical: -2),
+        contentPadding: const EdgeInsets.only(left: 8, right: 6),
+        horizontalTitleGap: 6,
+        leading: _buildDragHandle(),
         title: _buildTitle(),
         subtitle: _buildSubtitle(),
         trailing: _buildTrailing(),
@@ -103,12 +134,26 @@ class _TodoItemWidgetState extends ConsumerState<TodoItemWidget> {
     );
   }
 
-  Widget _buildLeading() {
-    return Icon(
+  /// 构建拖拽手柄
+  /// 鼠标设备：整个项可拖拽（手柄只是视觉提示）
+  /// 触摸/笔触：只有手柄区域可拖拽
+  Widget _buildDragHandle() {
+    final handle = Icon(
       Icons.drag_indicator,
       color: Theme.of(context).colorScheme.outline.withValues(alpha: 0.5),
       size: 16,
     );
+
+    // 触摸/笔触设备：只有手柄区域响应拖拽
+    if (!_isMouseDevice) {
+      return ReorderableDragStartListener(
+        index: widget.index,
+        child: handle,
+      );
+    }
+
+    // 鼠标设备：手柄只是视觉提示，整个项都可拖拽
+    return handle;
   }
 
   Widget _buildTitle() {
@@ -185,26 +230,18 @@ class _TodoItemWidgetState extends ConsumerState<TodoItemWidget> {
       children: [
         // 优先级指示器
         _buildPriorityIndicator(),
-        // 更多操作
-        PopupMenuButton<String>(
+        // 删除按钮
+        IconButton(
           icon: Icon(
-            Icons.more_vert,
-            size: 18,
+            Icons.close,
+            size: 16,
             color: Theme.of(context).colorScheme.outline,
           ),
-          tooltip: '更多操作',
-          itemBuilder: (context) => [
-            const PopupMenuItem(value: 'edit', child: Text('编辑')),
-            const PopupMenuItem(value: 'priority', child: Text('设置优先级')),
-            const PopupMenuItem(value: 'dueDate', child: Text('设置截止日期')),
-            const PopupMenuItem(value: 'move', child: Text('移动到...')),
-            const PopupMenuDivider(),
-            const PopupMenuItem(
-              value: 'delete',
-              child: Text('删除', style: TextStyle(color: Colors.red)),
-            ),
-          ],
-          onSelected: _handleMenuAction,
+          tooltip: '删除',
+          onPressed: _deleteItem,
+          visualDensity: VisualDensity.compact,
+          padding: EdgeInsets.zero,
+          constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
         ),
       ],
     );
@@ -234,6 +271,7 @@ class _TodoItemWidgetState extends ConsumerState<TodoItemWidget> {
       ),
     );
   }
+
 
   void _toggleCompleted() {
     ref.read(appDataProvider.notifier).toggleTodoCompleted(
@@ -271,35 +309,58 @@ class _TodoItemWidgetState extends ConsumerState<TodoItemWidget> {
       case 'move':
         _showMoveDialog();
         break;
-      case 'delete':
-        _deleteItem();
-        break;
     }
   }
 
-  void _showContextMenu(BuildContext context, TapUpDetails details) {
+  /// 在指定位置显示上下文菜单
+  void _showContextMenuAt(Offset position) {
     showMenu<String>(
       context: context,
       position: RelativeRect.fromLTRB(
-        details.globalPosition.dx,
-        details.globalPosition.dy,
-        details.globalPosition.dx,
-        details.globalPosition.dy,
+        position.dx,
+        position.dy,
+        position.dx,
+        position.dy,
       ),
-      items: <PopupMenuEntry<String>>[
-        const PopupMenuItem<String>(value: 'edit', child: Text('编辑')),
-        const PopupMenuItem<String>(value: 'priority', child: Text('设置优先级')),
-        const PopupMenuItem<String>(value: 'dueDate', child: Text('设置截止日期')),
-        const PopupMenuItem<String>(value: 'move', child: Text('移动到...')),
-        const PopupMenuDivider(),
-        const PopupMenuItem<String>(
-          value: 'delete',
-          child: Text('删除', style: TextStyle(color: Colors.red)),
-        ),
-      ],
+      items: _buildMenuItems(),
     ).then((value) {
       if (value != null) _handleMenuAction(value);
     });
+  }
+
+  /// 在组件中心显示上下文菜单（用于长按触发）
+  void _showContextMenuAtCenter() {
+    final RenderBox? box = context.findRenderObject() as RenderBox?;
+    if (box == null) return;
+    
+    final position = box.localToGlobal(Offset(box.size.width / 2, box.size.height / 2));
+    _showContextMenuAt(position);
+  }
+
+  /// 构建菜单项（紧凑样式，无删除项）
+  List<PopupMenuEntry<String>> _buildMenuItems() {
+    return [
+      const PopupMenuItem<String>(
+        value: 'edit',
+        height: 36,
+        child: Text('编辑'),
+      ),
+      const PopupMenuItem<String>(
+        value: 'priority',
+        height: 36,
+        child: Text('设置优先级'),
+      ),
+      const PopupMenuItem<String>(
+        value: 'dueDate',
+        height: 36,
+        child: Text('设置截止日期'),
+      ),
+      const PopupMenuItem<String>(
+        value: 'move',
+        height: 36,
+        child: Text('移动到...'),
+      ),
+    ];
   }
 
   void _showPriorityDialog() {

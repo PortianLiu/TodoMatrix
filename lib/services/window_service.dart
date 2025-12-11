@@ -615,26 +615,17 @@ class WindowService with WindowListener {
       final cursorPos = await screenRetriever.getCursorScreenPoint();
 
       if (_isHiddenAtEdge) {
-        // 当前隐藏状态，检测鼠标是否靠近边缘触发显示
-        // 这是轻量操作，只比较坐标值
-        bool shouldShow = false;
-        const triggerZone = 3.0; // 触发显示的区域（像素）
-        
-        switch (_dockedEdge) {
-          case EdgeDirection.left:
-            shouldShow = cursorPos.dx <= _currentDisplayBounds.left + triggerZone;
-            break;
-          case EdgeDirection.right:
-            shouldShow = cursorPos.dx >= _currentDisplayBounds.right - triggerZone;
-            break;
-          case EdgeDirection.top:
-            shouldShow = cursorPos.dy <= _currentDisplayBounds.top + triggerZone;
-            break;
-          case EdgeDirection.none:
-            break;
-        }
+        // 当前隐藏状态，检测鼠标是否进入隐藏的窗口区域
+        // 窗口隐藏后只露出 visiblePart 像素，鼠标进入这个区域就触发显示
+        final hiddenWindowPos = await windowManager.getPosition();
+        final hiddenWindowRect = Rect.fromLTWH(
+          hiddenWindowPos.dx,
+          hiddenWindowPos.dy,
+          _windowSize.width,
+          _windowSize.height,
+        );
 
-        if (shouldShow) {
+        if (hiddenWindowRect.contains(cursorPos)) {
           await _showFromEdge();
           _wasMouseInWindow = true;
         }

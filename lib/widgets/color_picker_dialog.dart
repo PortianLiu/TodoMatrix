@@ -122,11 +122,12 @@ class _ColorPickerDialogState extends State<ColorPickerDialog> {
             ),
             const SizedBox(height: 16),
             const Divider(),
-            const SizedBox(height: 8),
+            const SizedBox(height: 3),
             // 自定义颜色输入
             Text('自定义颜色', style: Theme.of(context).textTheme.bodySmall),
-            const SizedBox(height: 8),
+            const SizedBox(height: 14),
             Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 // 颜色预览
                 Container(
@@ -152,6 +153,7 @@ class _ColorPickerDialogState extends State<ColorPickerDialog> {
                       errorText: _errorText,
                       isDense: true,
                       border: const OutlineInputBorder(),
+                      counterText: '', // 隐藏字符计数器
                     ),
                     maxLength: 6,
                     onChanged: _validateAndParseColor,

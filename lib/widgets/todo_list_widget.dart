@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/models.dart';
 import '../models/settings.dart';
 import '../providers/todo_provider.dart';
+import 'color_picker_dialog.dart';
 import 'todo_item_widget.dart';
 
 /// 从十六进制字符串解析颜色
@@ -267,43 +268,17 @@ class _TodoListWidgetState extends ConsumerState<TodoListWidget> {
   void _showColorPicker(TodoList list) {
     showDialog(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('选择底色'),
-        content: Wrap(
-          spacing: 8,
-          runSpacing: 8,
-          children: ListColors.presetColors.map((colorHex) {
-            final color = _hexToColor(colorHex);
-            final isSelected = list.backgroundColor == colorHex;
-            return GestureDetector(
-              onTap: () {
-                ref.read(appDataProvider.notifier).updateListColor(
-                      widget.listId,
-                      colorHex == 'ffffff' ? null : colorHex,
-                    );
-                Navigator.pop(context);
-              },
-              child: Container(
-                width: 40,
-                height: 40,
-                decoration: BoxDecoration(
-                  color: color,
-                  border: Border.all(
-                    color: isSelected
-                        ? Theme.of(context).colorScheme.primary
-                        : Colors.grey.shade300,
-                    width: isSelected ? 3 : 1,
-                  ),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: isSelected
-                    ? Icon(Icons.check,
-                        color: Theme.of(context).colorScheme.primary, size: 20)
-                    : null,
-              ),
-            );
-          }).toList(),
-        ),
+      builder: (context) => ColorPickerDialog(
+        title: '选择底色',
+        currentColor: list.backgroundColor ?? 'ffffff',
+        presetColors: ListColors.presetColors,
+        isCircle: false,
+        onColorSelected: (colorHex) {
+          ref.read(appDataProvider.notifier).updateListColor(
+                widget.listId,
+                colorHex == 'ffffff' ? null : colorHex,
+              );
+        },
       ),
     );
   }

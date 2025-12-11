@@ -163,6 +163,9 @@ class AppSettings {
   /// 窗口高度（Windows）
   final double? windowHeight;
 
+  /// 窗口阴影（Windows）
+  final bool windowShadow;
+
   const AppSettings({
     this.themeMode = ThemeMode.system,
     this.themeColor = '9999ff',
@@ -173,6 +176,7 @@ class AppSettings {
     this.pinToDesktop = false,
     this.edgeHideEnabled = false,
     this.pinOpacity = 0.85,
+    this.windowShadow = true,
     this.windowX,
     this.windowY,
     this.windowWidth,
@@ -194,6 +198,7 @@ class AppSettings {
     bool? pinToDesktop,
     bool? edgeHideEnabled,
     double? pinOpacity,
+    bool? windowShadow,
     double? windowX,
     double? windowY,
     double? windowWidth,
@@ -211,6 +216,7 @@ class AppSettings {
       pinToDesktop: pinToDesktop ?? this.pinToDesktop,
       edgeHideEnabled: edgeHideEnabled ?? this.edgeHideEnabled,
       pinOpacity: pinOpacity ?? this.pinOpacity,
+      windowShadow: windowShadow ?? this.windowShadow,
       windowX: windowX ?? this.windowX,
       windowY: windowY ?? this.windowY,
       windowWidth: windowWidth ?? this.windowWidth,
@@ -231,6 +237,7 @@ class AppSettings {
         other.pinToDesktop == pinToDesktop &&
         other.edgeHideEnabled == edgeHideEnabled &&
         other.pinOpacity == pinOpacity &&
+        other.windowShadow == windowShadow &&
         other.windowX == windowX &&
         other.windowY == windowY &&
         other.windowWidth == windowWidth &&
@@ -249,6 +256,7 @@ class AppSettings {
       pinToDesktop,
       edgeHideEnabled,
       pinOpacity,
+      windowShadow,
       windowX,
       windowY,
       windowWidth,

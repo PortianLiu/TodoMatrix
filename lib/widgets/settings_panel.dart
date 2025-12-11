@@ -46,6 +46,7 @@ class SettingsPanel extends ConsumerWidget {
           _buildSectionHeader(context, '布局'),
           _buildColumnsTile(context, ref, layoutSettings.columnsPerRow),
           _buildListHeightTile(context, ref, layoutSettings.listHeight),
+          _buildListOrderTile(context, ref),
           const Divider(),
 
           // 同步设置
@@ -278,6 +279,12 @@ class SettingsPanel extends ConsumerWidget {
         ),
       ),
     );
+  }
+
+  /// 构建列表排序设置项
+  /// 构建列表排序设置项（内嵌可拖拽方块）
+  Widget _buildListOrderTile(BuildContext context, WidgetRef ref) {
+    return _ListOrderSection();
   }
 
   /// 构建同步开关
@@ -612,5 +619,172 @@ class SettingsPanel extends ConsumerWidget {
         );
       }
     }
+  }
+}
+
+
+/// 列表排序区域（内嵌可拖拽方块，即时生效）
+class _ListOrderSection extends ConsumerStatefulWidget {
+  const _ListOrderSection();
+
+  @override
+  ConsumerState<_ListOrderSection> createState() => _ListOrderSectionState();
+}
+
+class _ListOrderSectionState extends ConsumerState<_ListOrderSection> {
+  @override
+  Widget build(BuildContext context) {
+    final lists = ref.watch(sortedListsProvider);
+
+    if (lists.isEmpty) {
+      return const ListTile(
+        leading: Icon(Icons.reorder),
+        title: Text('列表排序'),
+        subtitle: Text('暂无列表'),
+      );
+    }
+
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 11, vertical: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 12),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: Theme.of(context).colorScheme.outline.withValues(alpha: 0.2),
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(
+                Icons.reorder,
+                size: 20,
+                color: Theme.of(context).colorScheme.outline,
+              ),
+              const SizedBox(width: 10),
+              Text(
+                '列表排序',
+                style: Theme.of(context).textTheme.bodyLarge,
+              ),
+              const SizedBox(width: 10),
+              Text(
+                '拖拽调整顺序',
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color: Theme.of(context).colorScheme.outline,
+                    ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          ReorderableWrap(
+            spacing: 8,
+            runSpacing: 8,
+            onReorder: (oldIndex, newIndex) {
+              // 即时保存排序
+              final currentOrder = lists.map((l) => l.id).toList();
+              final item = currentOrder.removeAt(oldIndex);
+              currentOrder.insert(newIndex, item);
+              ref.read(appDataProvider.notifier).updateListOrder(currentOrder);
+            },
+            children: lists.map((list) {
+              return _buildListChip(context, list);
+            }).toList(),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildListChip(BuildContext context, dynamic list) {
+    // 获取列表底色
+    final bgColor = list.backgroundColor != null
+        ? _hexToColor(list.backgroundColor!)
+        : Theme.of(context).cardColor;
+
+    return Container(
+      key: ValueKey(list.id),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      decoration: BoxDecoration(
+        color: bgColor,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(
+          color: Theme.of(context).colorScheme.outline.withValues(alpha: 0.3),
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.1),
+            blurRadius: 2,
+            offset: const Offset(0, 1),
+          ),
+        ],
+      ),
+      child: Text(
+        list.title,
+        style: Theme.of(context).textTheme.bodyMedium,
+      ),
+    );
+  }
+}
+
+/// 可重排序的 Wrap 组件
+class ReorderableWrap extends StatefulWidget {
+  final List<Widget> children;
+  final void Function(int oldIndex, int newIndex) onReorder;
+  final double spacing;
+  final double runSpacing;
+
+  const ReorderableWrap({
+    super.key,
+    required this.children,
+    required this.onReorder,
+    this.spacing = 0,
+    this.runSpacing = 0,
+  });
+
+  @override
+  State<ReorderableWrap> createState() => _ReorderableWrapState();
+}
+
+class _ReorderableWrapState extends State<ReorderableWrap> {
+  @override
+  Widget build(BuildContext context) {
+    return Wrap(
+      spacing: widget.spacing,
+      runSpacing: widget.runSpacing,
+      children: List.generate(widget.children.length, (index) {
+        final child = widget.children[index];
+        return Draggable<int>(
+          data: index,
+          feedback: Material(
+            elevation: 4,
+            borderRadius: BorderRadius.circular(8),
+            child: Opacity(opacity: 0.9, child: child),
+          ),
+          childWhenDragging: Opacity(opacity: 0.3, child: child),
+          child: DragTarget<int>(
+            onWillAcceptWithDetails: (details) => details.data != index,
+            onAcceptWithDetails: (details) {
+              widget.onReorder(details.data, index);
+            },
+            builder: (context, candidateData, rejectedData) {
+              return Container(
+                decoration: candidateData.isNotEmpty
+                    ? BoxDecoration(
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(
+                          color: Theme.of(context).colorScheme.primary,
+                          width: 2,
+                        ),
+                      )
+                    : null,
+                child: child,
+              );
+            },
+          ),
+        );
+      }),
+    );
   }
 }

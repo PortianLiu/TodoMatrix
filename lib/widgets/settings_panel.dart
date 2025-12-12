@@ -685,10 +685,14 @@ class _ListOrderSectionState extends ConsumerState<_ListOrderSection> {
   }
 
   Widget _buildListChip(BuildContext context, dynamic list) {
-    // 获取列表底色
-    final bgColor = list.backgroundColor != null
-        ? _hexToColor(list.backgroundColor!)
-        : Theme.of(context).cardColor;
+    // 获取列表底色（带透明度，适配深浅色模式）
+    Color bgColor;
+    if (list.backgroundColor != null && list.backgroundColor != 'ffffff') {
+      final baseColor = _hexToColor(list.backgroundColor!);
+      bgColor = baseColor.withValues(alpha: 0.15);
+    } else {
+      bgColor = Theme.of(context).cardColor;
+    }
 
     return Container(
       key: ValueKey(list.id),

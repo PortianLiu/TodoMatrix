@@ -116,9 +116,16 @@ class DataNotifier extends StateNotifier<AppDataState> {
         settings: settings,
         isLoading: false,
       );
-    } catch (e) {
+    } catch (e, stackTrace) {
       debugPrint('[DataNotifier] 加载数据失败: $e');
-      state = state.copyWith(isLoading: false);
+      debugPrint('[DataNotifier] 堆栈: $stackTrace');
+      // 加载失败时使用空数据，确保应用能正常启动
+      state = AppDataState(
+        manifest: SyncManifest.empty(),
+        lists: const {},
+        settings: const LocalSettings(),
+        isLoading: false,
+      );
     }
   }
 

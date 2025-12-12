@@ -102,6 +102,8 @@ class SyncStorageService {
   Future<SyncManifest> loadManifest() async {
     final syncDir = await _getSyncDataDirectory();
     final file = File('${syncDir.path}/$_manifestFileName');
+    
+    debugPrint('[SyncStorage] 清单文件路径: ${file.path}');
 
     if (!await file.exists()) {
       debugPrint('[SyncStorage] 清单文件不存在，返回空清单');
@@ -110,11 +112,21 @@ class SyncStorageService {
 
     try {
       final content = await file.readAsString();
+      debugPrint('[SyncStorage] 清单文件内容长度: ${content.length}');
       final json = jsonDecode(content) as Map<String, dynamic>;
-      debugPrint('[SyncStorage] 加载清单成功，包含 ${(json['lists'] as List?)?.length ?? 0} 个列表');
-      return SyncManifest.fromJson(json);
-    } catch (e) {
+      final listsJson = json['lists'] as List?;
+      final listOrderJson = json['listOrder'] as List?;
+      debugPrint('[SyncStorage] 清单 JSON 解析:');
+      debugPrint('[SyncStorage]   lists 数量: ${listsJson?.length ?? 0}');
+      debugPrint('[SyncStorage]   listOrder 数量: ${listOrderJson?.length ?? 0}');
+      final manifest = SyncManifest.fromJson(json);
+      debugPrint('[SyncStorage] 加载清单成功:');
+      debugPrint('[SyncStorage]   manifest.lists: ${manifest.lists.length}');
+      debugPrint('[SyncStorage]   manifest.listOrder: ${manifest.listOrder}');
+      return manifest;
+    } catch (e, stackTrace) {
       debugPrint('[SyncStorage] 加载清单失败: $e');
+      debugPrint('[SyncStorage] 堆栈: $stackTrace');
       return SyncManifest.empty();
     }
   }
@@ -243,6 +255,8 @@ class SyncStorageService {
   Future<LocalSettings> loadLocalSettings() async {
     final root = await _getDataDirectory();
     final file = File('${root.path}/$_localSettingsFileName');
+    
+    debugPrint('[SyncStorage] 本地设置文件路径: ${file.path}');
 
     if (!await file.exists()) {
       debugPrint('[SyncStorage] 本地设置文件不存在，返回默认设置');
@@ -251,11 +265,18 @@ class SyncStorageService {
 
     try {
       final content = await file.readAsString();
+      debugPrint('[SyncStorage] 本地设置文件内容: $content');
       final json = jsonDecode(content) as Map<String, dynamic>;
-      debugPrint('[SyncStorage] 加载本地设置成功');
-      return LocalSettings.fromJson(json);
-    } catch (e) {
+      debugPrint('[SyncStorage] 解析 JSON 成功，字段: ${json.keys.toList()}');
+      final settings = LocalSettings.fromJson(json);
+      debugPrint('[SyncStorage] 加载本地设置成功:');
+      debugPrint('[SyncStorage]   themeColor=${settings.themeColor}');
+      debugPrint('[SyncStorage]   syncEnabled=${settings.syncEnabled}');
+      debugPrint('[SyncStorage]   windowX=${settings.windowX}');
+      return settings;
+    } catch (e, stackTrace) {
       debugPrint('[SyncStorage] 加载本地设置失败: $e');
+      debugPrint('[SyncStorage] 堆栈: $stackTrace');
       return const LocalSettings();
     }
   }

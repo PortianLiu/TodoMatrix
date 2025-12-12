@@ -88,22 +88,44 @@ class DiscoveryService {
 
   /// 启动设备发现
   Future<void> startDiscovery() async {
-    if (_socket != null) return;
+    if (_socket != null) {
+      debugPrint('[Discovery] 服务已在运行中');
+      return;
+    }
+
+    debugPrint('[Discovery] ========== 启动设备发现服务 ==========');
+    debugPrint('[Discovery] 本机设备ID: $_deviceId');
+    debugPrint('[Discovery] 本机设备名: $_deviceName');
 
     try {
+      // 打印本机网络接口信息
+      await _printNetworkInterfaces();
+
       // 绑定 UDP 端口
       // 注意：reusePort 在 Windows/Android 上不支持，只使用 reuseAddress
+      debugPrint('[Discovery] 正在绑定 UDP 端口 $discoveryPort...');
       _socket = await RawDatagramSocket.bind(
         InternetAddress.anyIPv4,
         discoveryPort,
         reuseAddress: true,
       );
+      debugPrint('[Discovery] UDP 端口绑定成功，本地地址: ${_socket!.address.address}:${_socket!.port}');
 
       // 启用广播
       _socket!.broadcastEnabled = true;
+      debugPrint('[Discovery] 广播已启用');
 
       // 监听数据
-      _socket!.listen(_handleDatagram);
+      _socket!.listen(
+        _handleDatagram,
+        onError: (error) {
+          debugPrint('[Discovery] Socket 错误: $error');
+        },
+        onDone: () {
+          debugPrint('[Discovery] Socket 已关闭');
+        },
+      );
+      debugPrint('[Discovery] 开始监听 UDP 数据包...');
 
       // 开始定期广播
       _broadcastTimer = Timer.periodic(broadcastInterval, (_) => broadcastPresence());
@@ -114,14 +136,32 @@ class DiscoveryService {
       // 立即广播一次
       await broadcastPresence();
       
-      debugPrint('[Discovery] 设备发现服务已启动，端口: $discoveryPort');
-    } catch (e) {
+      debugPrint('[Discovery] ========== 设备发现服务启动完成 ==========');
+    } catch (e, stackTrace) {
       debugPrint('[Discovery] 设备发现服务启动失败: $e');
+      debugPrint('[Discovery] 堆栈: $stackTrace');
+    }
+  }
+
+  /// 打印本机网络接口信息
+  Future<void> _printNetworkInterfaces() async {
+    try {
+      final interfaces = await NetworkInterface.list(type: InternetAddressType.IPv4);
+      debugPrint('[Discovery] 本机网络接口 (${interfaces.length} 个):');
+      for (final interface in interfaces) {
+        for (final addr in interface.addresses) {
+          debugPrint('[Discovery]   - ${interface.name}: ${addr.address}');
+        }
+      }
+    } catch (e) {
+      debugPrint('[Discovery] 获取网络接口失败: $e');
     }
   }
 
   /// 停止设备发现
   Future<void> stopDiscovery() async {
+    debugPrint('[Discovery] 停止设备发现服务...');
+    
     _broadcastTimer?.cancel();
     _broadcastTimer = null;
 
@@ -131,8 +171,11 @@ class DiscoveryService {
     _socket?.close();
     _socket = null;
 
+    final deviceCount = _discoveredDevices.length;
     _discoveredDevices.clear();
     _notifyDevicesChanged();
+    
+    debugPrint('[Discovery] 服务已停止，清理了 $deviceCount 个设备');
   }
 
   /// 广播自身存在
@@ -190,26 +233,60 @@ class DiscoveryService {
 
   /// 处理接收到的数据报
   void _handleDatagram(RawSocketEvent event) {
-    if (event != RawSocketEvent.read) return;
+    debugPrint('[Discovery] 收到 Socket 事件: $event');
+    
+    if (event != RawSocketEvent.read) {
+      debugPrint('[Discovery] 非读取事件，忽略');
+      return;
+    }
 
     final datagram = _socket?.receive();
-    if (datagram == null) return;
+    if (datagram == null) {
+      debugPrint('[Discovery] 数据报为空');
+      return;
+    }
+
+    final sourceAddr = datagram.address.address;
+    final sourcePort = datagram.port;
+    final dataLength = datagram.data.length;
+    debugPrint('[Discovery] 收到数据包: 来源=$sourceAddr:$sourcePort, 大小=$dataLength 字节');
 
     try {
-      final message = jsonDecode(utf8.decode(datagram.data)) as Map<String, dynamic>;
+      final rawData = utf8.decode(datagram.data);
+      debugPrint('[Discovery] 原始数据: $rawData');
+      
+      final message = jsonDecode(rawData) as Map<String, dynamic>;
 
-      if (message['type'] != 'discovery') return;
+      if (message['type'] != 'discovery') {
+        debugPrint('[Discovery] 非发现消息，类型: ${message['type']}');
+        return;
+      }
 
       final deviceId = message['deviceId'] as String;
+      final deviceName = message['deviceName'] as String?;
 
       // 忽略自己的广播
-      if (deviceId == _deviceId) return;
+      if (deviceId == _deviceId) {
+        debugPrint('[Discovery] 收到自己的广播，忽略');
+        return;
+      }
 
+      debugPrint('[Discovery] ★★★ 发现新设备: $deviceName ($deviceId) @ $sourceAddr ★★★');
+      
       final device = DeviceInfo.fromJson(message, datagram.address);
+      final isNew = !_discoveredDevices.containsKey(deviceId);
       _discoveredDevices[deviceId] = device;
+      
+      if (isNew) {
+        debugPrint('[Discovery] 新设备已添加到列表，当前设备数: ${_discoveredDevices.length}');
+      } else {
+        debugPrint('[Discovery] 已知设备，更新最后在线时间');
+      }
+      
       _notifyDevicesChanged();
-    } catch (e) {
-      // 忽略解析错误
+    } catch (e, stackTrace) {
+      debugPrint('[Discovery] 解析数据包失败: $e');
+      debugPrint('[Discovery] 堆栈: $stackTrace');
     }
   }
 
@@ -219,8 +296,10 @@ class DiscoveryService {
     final expiredIds = <String>[];
 
     for (final entry in _discoveredDevices.entries) {
-      if (now.difference(entry.value.lastSeen) > deviceTimeout) {
+      final age = now.difference(entry.value.lastSeen);
+      if (age > deviceTimeout) {
         expiredIds.add(entry.key);
+        debugPrint('[Discovery] 设备超时: ${entry.value.deviceName} (${age.inSeconds}秒未响应)');
       }
     }
 
@@ -229,6 +308,7 @@ class DiscoveryService {
         _discoveredDevices.remove(id);
       }
       _notifyDevicesChanged();
+      debugPrint('[Discovery] 清理了 ${expiredIds.length} 个过期设备，剩余 ${_discoveredDevices.length} 个');
     }
   }
 

@@ -424,50 +424,38 @@ class _MainScreenState extends ConsumerState<MainScreen> {
   /// 构建同步按钮（Windows）
   Widget _buildSyncButton() {
     final syncState = ref.watch(syncProvider);
-    final isDiscovering = syncState.status == SyncStatus.discovering;
-    final isSyncing = syncState.status == SyncStatus.syncing ||
+    final isAnimating = syncState.status == SyncStatus.broadcasting ||
+        syncState.status == SyncStatus.syncing ||
         syncState.status == SyncStatus.connecting;
     final hasDevices = syncState.devices.isNotEmpty;
 
-    return IconButton(
-      icon: AnimatedRotation(
-        turns: isSyncing ? 1 : 0,
-        duration: Duration(milliseconds: isSyncing ? 1000 : 0),
-        child: Icon(
-          Icons.sync,
-          size: 20,
-          color: isDiscovering || isSyncing
-              ? Theme.of(context).colorScheme.primary
-              : hasDevices
-                  ? Colors.green
-                  : Theme.of(context).colorScheme.onPrimaryContainer,
-        ),
-      ),
+    return _SyncIconButton(
+      isAnimating: isAnimating,
+      hasDevices: hasDevices,
+      status: syncState.status,
       tooltip: _getSyncTooltip(syncState),
       onPressed: () => _handleSyncButtonPressed(syncState),
-      visualDensity: VisualDensity.compact,
+      iconSize: 20,
+      compact: true,
     );
   }
 
   /// 构建同步按钮（移动端）
   Widget _buildMobileSyncButton() {
     final syncState = ref.watch(syncProvider);
-    final isDiscovering = syncState.status == SyncStatus.discovering;
-    final isSyncing = syncState.status == SyncStatus.syncing ||
+    final isAnimating = syncState.status == SyncStatus.broadcasting ||
+        syncState.status == SyncStatus.syncing ||
         syncState.status == SyncStatus.connecting;
     final hasDevices = syncState.devices.isNotEmpty;
 
-    return IconButton(
-      icon: Icon(
-        Icons.sync,
-        color: isDiscovering || isSyncing
-            ? Theme.of(context).colorScheme.primary
-            : hasDevices
-                ? Colors.green
-                : null,
-      ),
+    return _SyncIconButton(
+      isAnimating: isAnimating,
+      hasDevices: hasDevices,
+      status: syncState.status,
       tooltip: _getSyncTooltip(syncState),
       onPressed: () => _handleSyncButtonPressed(syncState),
+      iconSize: 24,
+      compact: false,
     );
   }
 
@@ -475,9 +463,11 @@ class _MainScreenState extends ConsumerState<MainScreen> {
   String _getSyncTooltip(SyncState syncState) {
     switch (syncState.status) {
       case SyncStatus.idle:
-        return syncState.devices.isEmpty ? '发现设备' : '点击同步 (${syncState.devices.length} 个设备)';
-      case SyncStatus.discovering:
-        return '正在搜索设备...';
+        return syncState.devices.isEmpty 
+            ? '点击同步' 
+            : '点击同步 (${syncState.devices.length} 个设备在线)';
+      case SyncStatus.broadcasting:
+        return '正在广播...';
       case SyncStatus.connecting:
         return '正在连接...';
       case SyncStatus.syncing:
@@ -496,32 +486,118 @@ class _MainScreenState extends ConsumerState<MainScreen> {
 
     debugPrint('[Sync] 按钮点击，当前状态: ${syncState.status}');
 
-    // 如果正在同步，不做任何操作
+    // 如果正在同步或广播，忽略
     if (syncState.status == SyncStatus.syncing ||
-        syncState.status == SyncStatus.connecting) {
-      debugPrint('[Sync] 正在同步中，忽略点击');
+        syncState.status == SyncStatus.connecting ||
+        syncState.status == SyncStatus.broadcasting) {
+      debugPrint('[Sync] 正在处理中，忽略点击');
       return;
     }
 
-    // 如果正在发现设备，停止发现
-    if (syncState.status == SyncStatus.discovering) {
-      debugPrint('[Sync] 停止设备发现');
-      await syncNotifier.stopDiscovery();
-      return;
-    }
-
-    // 如果有已发现的设备，触发同步
-    if (syncState.devices.isNotEmpty) {
-      debugPrint('[Sync] 发现 ${syncState.devices.length} 个设备，开始同步');
-      // 与第一个设备同步（后续可以改为选择设备）
-      await syncNotifier.syncWithDevice(syncState.devices.first);
-      return;
-    }
-
-    // 否则开始设备发现
-    debugPrint('[Sync] 开始设备发现，设备名: ${settings.deviceName}');
+    // 确保服务已初始化
     await syncNotifier.initialize(settings.deviceName);
-    await syncNotifier.startDiscovery();
+    
+    // 发起广播并同步
+    await syncNotifier.broadcastAndSync();
   }
 }
 
+/// 同步图标按钮（带旋转动画）
+class _SyncIconButton extends StatefulWidget {
+  final bool isAnimating;
+  final bool hasDevices;
+  final SyncStatus status;
+  final String tooltip;
+  final VoidCallback onPressed;
+  final double iconSize;
+  final bool compact;
+
+  const _SyncIconButton({
+    required this.isAnimating,
+    required this.hasDevices,
+    required this.status,
+    required this.tooltip,
+    required this.onPressed,
+    required this.iconSize,
+    required this.compact,
+  });
+
+  @override
+  State<_SyncIconButton> createState() => _SyncIconButtonState();
+}
+
+class _SyncIconButtonState extends State<_SyncIconButton>
+    with SingleTickerProviderStateMixin {
+  late AnimationController _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      duration: const Duration(milliseconds: 1000),
+      vsync: this,
+    );
+    if (widget.isAnimating) {
+      _controller.repeat();
+    }
+  }
+
+  @override
+  void didUpdateWidget(_SyncIconButton oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.isAnimating && !oldWidget.isAnimating) {
+      _controller.repeat();
+    } else if (!widget.isAnimating && oldWidget.isAnimating) {
+      // 完成当前旋转周期后停止
+      _controller.forward().then((_) {
+        if (!widget.isAnimating) {
+          _controller.reset();
+        }
+      });
+    }
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    // 根据状态确定颜色
+    Color iconColor;
+    if (widget.isAnimating) {
+      iconColor = Theme.of(context).colorScheme.primary;
+    } else if (widget.status == SyncStatus.completed) {
+      iconColor = Colors.green;
+    } else if (widget.status == SyncStatus.failed) {
+      iconColor = Colors.red;
+    } else if (widget.hasDevices) {
+      iconColor = Colors.green;
+    } else {
+      iconColor = widget.compact
+          ? Theme.of(context).colorScheme.onPrimaryContainer
+          : Theme.of(context).colorScheme.onSurface;
+    }
+
+    return IconButton(
+      icon: AnimatedBuilder(
+        animation: _controller,
+        builder: (context, child) {
+          return Transform.rotate(
+            angle: _controller.value * 2 * math.pi,
+            child: Icon(
+              Icons.sync,
+              size: widget.iconSize,
+              color: iconColor,
+            ),
+          );
+        },
+      ),
+      tooltip: widget.tooltip,
+      onPressed: widget.onPressed,
+      visualDensity: widget.compact ? VisualDensity.compact : null,
+    );
+  }
+}

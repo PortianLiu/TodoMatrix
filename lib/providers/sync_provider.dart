@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../services/discovery_service.dart';
@@ -8,12 +9,12 @@ import 'data_provider.dart';
 
 /// 同步状态
 enum SyncStatus {
-  idle,
-  discovering,
-  connecting,
-  syncing,
-  completed,
-  failed,
+  idle,        // 空闲，监听中
+  broadcasting, // 正在广播（按钮旋转）
+  connecting,  // 正在连接
+  syncing,     // 正在同步
+  completed,   // 同步完成
+  failed,      // 同步失败
 }
 
 /// 同步状态数据
@@ -22,12 +23,14 @@ class SyncState {
   final List<DeviceInfo> devices;
   final String? message;
   final SyncResult? lastResult;
+  final bool isListening; // 是否正在监听
 
   const SyncState({
     this.status = SyncStatus.idle,
     this.devices = const [],
     this.message,
     this.lastResult,
+    this.isListening = false,
   });
 
   SyncState copyWith({
@@ -35,6 +38,7 @@ class SyncState {
     List<DeviceInfo>? devices,
     String? message,
     SyncResult? lastResult,
+    bool? isListening,
     bool clearMessage = false,
     bool clearResult = false,
   }) {
@@ -43,6 +47,7 @@ class SyncState {
       devices: devices ?? this.devices,
       message: clearMessage ? null : (message ?? this.message),
       lastResult: clearResult ? null : (lastResult ?? this.lastResult),
+      isListening: isListening ?? this.isListening,
     );
   }
 }
@@ -54,32 +59,124 @@ class SyncNotifier extends StateNotifier<SyncState> {
   SyncService? _syncService;
   StreamSubscription? _devicesSub;
   StreamSubscription? _eventsSub;
+  Timer? _broadcastAnimationTimer;
 
   SyncNotifier(this._ref) : super(const SyncState());
 
-  /// 初始化同步服务
+  /// 初始化同步服务并开始监听
   Future<void> initialize(String deviceName) async {
-    final settings = _ref.read(localSettingsProvider);
+    if (_discoveryService != null) {
+      debugPrint('[SyncProvider] 服务已初始化');
+      return;
+    }
 
+    debugPrint('[SyncProvider] 初始化同步服务，设备名: $deviceName');
+    
+    final settings = _ref.read(localSettingsProvider);
     _discoveryService = DiscoveryService(deviceName: deviceName);
     _syncService = SyncService(deviceId: settings.deviceName);
 
-    // 设置数据回调（暂时保留，后续重构同步逻辑）
-    // _syncService!.getLocalData = () => ...;
-    // _syncService!.onDataUpdated = (data) => ...;
-
     // 监听设备发现
     _devicesSub = _discoveryService!.discoveredDevices.listen((devices) {
+      debugPrint('[SyncProvider] 设备列表更新: ${devices.length} 个设备');
       state = state.copyWith(devices: devices);
+      
+      // 发现新设备时自动同步（如果不在同步中）
+      if (devices.isNotEmpty && 
+          state.status != SyncStatus.syncing && 
+          state.status != SyncStatus.connecting) {
+        _autoSyncWithDevices(devices);
+      }
     });
 
     // 监听同步事件
     _eventsSub = _syncService!.syncEvents.listen(_handleSyncEvent);
   }
 
+  /// 开始监听（应用启动时调用）
+  Future<void> startListening() async {
+    if (_discoveryService == null) {
+      debugPrint('[SyncProvider] 服务未初始化，无法开始监听');
+      return;
+    }
+    
+    if (state.isListening) {
+      debugPrint('[SyncProvider] 已在监听中');
+      return;
+    }
+
+    debugPrint('[SyncProvider] 开始监听设备广播...');
+    await _discoveryService!.startDiscovery();
+    await _syncService?.startServer();
+    state = state.copyWith(isListening: true);
+  }
+
+  /// 停止监听
+  Future<void> stopListening() async {
+    debugPrint('[SyncProvider] 停止监听');
+    await _discoveryService?.stopDiscovery();
+    await _syncService?.stopServer();
+    state = state.copyWith(isListening: false, devices: []);
+  }
+
+  /// 发起一次广播并尝试同步
+  Future<void> broadcastAndSync() async {
+    if (_discoveryService == null) {
+      debugPrint('[SyncProvider] 服务未初始化');
+      return;
+    }
+
+    // 如果正在同步，忽略
+    if (state.status == SyncStatus.syncing || 
+        state.status == SyncStatus.connecting) {
+      debugPrint('[SyncProvider] 正在同步中，忽略广播请求');
+      return;
+    }
+
+    debugPrint('[SyncProvider] 发起广播...');
+    
+    // 设置广播状态（触发按钮旋转动画）
+    state = state.copyWith(status: SyncStatus.broadcasting);
+    
+    // 确保监听已启动
+    if (!state.isListening) {
+      await startListening();
+    }
+    
+    // 发送广播
+    await _discoveryService!.broadcastPresence();
+    
+    // 1秒后结束广播动画
+    _broadcastAnimationTimer?.cancel();
+    _broadcastAnimationTimer = Timer(const Duration(milliseconds: 1000), () {
+      if (state.status == SyncStatus.broadcasting) {
+        state = state.copyWith(status: SyncStatus.idle);
+        
+        // 如果有设备，尝试同步
+        if (state.devices.isNotEmpty) {
+          _autoSyncWithDevices(state.devices);
+        }
+      }
+    });
+  }
+
+  /// 自动与发现的设备同步
+  Future<void> _autoSyncWithDevices(List<DeviceInfo> devices) async {
+    if (devices.isEmpty) return;
+    
+    debugPrint('[SyncProvider] 自动同步，设备数: ${devices.length}');
+    
+    // 与所有设备同步（按顺序）
+    for (final device in devices) {
+      debugPrint('[SyncProvider] 同步设备: ${device.deviceName} @ ${device.address.address}');
+      await syncWithDevice(device);
+    }
+  }
 
   /// 处理同步事件
   void _handleSyncEvent(SyncEvent event) {
+    debugPrint('[SyncProvider] 同步事件: ${event.type}, 消息: ${event.message}');
+    
     switch (event.type) {
       case SyncEventType.connecting:
         state = state.copyWith(
@@ -127,22 +224,6 @@ class SyncNotifier extends StateNotifier<SyncState> {
     }
   }
 
-  /// 开始设备发现
-  Future<void> startDiscovery() async {
-    if (_discoveryService == null) return;
-
-    state = state.copyWith(status: SyncStatus.discovering);
-    await _discoveryService!.startDiscovery();
-    await _syncService?.startServer();
-  }
-
-  /// 停止设备发现
-  Future<void> stopDiscovery() async {
-    await _discoveryService?.stopDiscovery();
-    await _syncService?.stopServer();
-    state = state.copyWith(status: SyncStatus.idle, devices: []);
-  }
-
   /// 与指定设备同步
   Future<void> syncWithDevice(DeviceInfo device) async {
     if (_syncService == null) return;
@@ -157,6 +238,7 @@ class SyncNotifier extends StateNotifier<SyncState> {
 
   @override
   void dispose() {
+    _broadcastAnimationTimer?.cancel();
     _devicesSub?.cancel();
     _eventsSub?.cancel();
     _discoveryService?.dispose();

@@ -395,17 +395,24 @@ class _MouseAwareDragWrapper extends StatefulWidget {
 }
 
 class _MouseAwareDragWrapperState extends State<_MouseAwareDragWrapper> {
-  bool _isMouseDevice = true;
+  bool? _isMouseDevice; // 初始为 null，等待首次检测
 
   @override
   Widget build(BuildContext context) {
+    // 根据平台预设默认值：Windows 默认鼠标，其他平台默认触摸
+    final isWindows = Theme.of(context).platform == TargetPlatform.windows;
+    final effectiveIsMouseDevice = _isMouseDevice ?? isWindows;
+
     return Listener(
       onPointerDown: (event) {
-        setState(() {
-          _isMouseDevice = event.kind == PointerDeviceKind.mouse;
-        });
+        final isMouse = event.kind == PointerDeviceKind.mouse;
+        if (_isMouseDevice != isMouse) {
+          setState(() {
+            _isMouseDevice = isMouse;
+          });
+        }
       },
-      child: _isMouseDevice
+      child: effectiveIsMouseDevice
           ? ReorderableDragStartListener(
               index: widget.index,
               child: widget.child,

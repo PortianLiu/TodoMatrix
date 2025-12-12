@@ -1,24 +1,12 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../models/models.dart';
-import 'todo_provider.dart';
+import '../models/local_settings.dart';
+import 'data_provider.dart';
 
-/// 布局设置 Provider
-final layoutSettingsProvider = Provider<LayoutSettings>((ref) {
-  final appData = ref.watch(appDataProvider);
-  return appData.layout;
-});
-
-/// 每行列数 Provider
-final columnsPerRowProvider = Provider<int>((ref) {
-  final layout = ref.watch(layoutSettingsProvider);
-  return layout.columnsPerRow;
-});
-
-/// 列表高度 Provider
-final listHeightProvider = Provider<double>((ref) {
-  final layout = ref.watch(layoutSettingsProvider);
-  return layout.listHeight;
+/// 布局设置 Provider（从 LocalSettings 获取）
+final layoutSettingsProvider = Provider<LocalSettings>((ref) {
+  final data = ref.watch(dataProvider);
+  return data.settings;
 });
 
 /// 布局控制器
@@ -28,27 +16,22 @@ class LayoutController {
   LayoutController(this._ref);
 
   /// 获取当前布局设置
-  LayoutSettings get layout => _ref.read(layoutSettingsProvider);
+  LocalSettings get layout => _ref.read(layoutSettingsProvider);
 
   /// 获取当前每行列数
   int get columnsPerRow => _ref.read(columnsPerRowProvider);
 
   /// 设置每行列数
   void setColumnsPerRow(int columns) {
-    _ref.read(appDataProvider.notifier).setColumnsPerRow(columns);
-  }
-
-  /// 移动列表到新位置
-  void moveList(int oldIndex, int newIndex) {
-    _ref.read(appDataProvider.notifier).moveList(oldIndex, newIndex);
+    _ref.read(dataProvider.notifier).setColumnsPerRow(columns);
   }
 
   /// 获取列表排序顺序
-  List<String> get listOrder => layout.listOrder;
+  List<String> get listOrder => _ref.read(dataProvider).manifest.listOrder;
 
   /// 更新列表排序顺序
   void updateListOrder(List<String> newOrder) {
-    _ref.read(appDataProvider.notifier).updateListOrder(newOrder);
+    _ref.read(dataProvider.notifier).updateListOrder(newOrder);
   }
 }
 

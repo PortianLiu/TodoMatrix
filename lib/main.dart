@@ -4,8 +4,8 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import 'providers/todo_provider.dart';
-import 'services/storage_service.dart';
+import 'providers/data_provider.dart';
+import 'services/sync_storage_service.dart';
 import 'services/window_service.dart';
 import 'widgets/main_screen.dart';
 
@@ -49,9 +49,8 @@ void main() async {
 Future<void> _restoreWindowBounds() async {
   try {
     // 直接从存储服务加载数据
-    final storageService = StorageService();
-    final data = await storageService.loadData();
-    final settings = data.settings;
+    final storageService = SyncStorageService();
+    final settings = await storageService.loadLocalSettings();
     
     // 恢复窗口位置和大小
     await WindowService.instance.restoreWindowBounds(
@@ -70,8 +69,8 @@ Future<void> _restoreWindowBounds() async {
 /// 窗口位置/大小变化时保存
 void _onWindowBoundsChanged(double x, double y, double width, double height) {
   try {
-    final notifier = _container.read(appDataProvider.notifier);
-    final currentSettings = _container.read(appSettingsProvider);
+    final notifier = _container.read(dataProvider.notifier);
+    final currentSettings = _container.read(localSettingsProvider);
     
     // 只有当位置或大小真正变化时才保存
     if (currentSettings.windowX != x ||
@@ -107,7 +106,7 @@ class TodoMatrixApp extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     // 监听主题模式和主题色变化
     final themeMode = ref.watch(themeModeProvider);
-    final settings = ref.watch(appSettingsProvider);
+    final settings = ref.watch(localSettingsProvider);
     final seedColor = hexToColor(settings.themeColor);
 
     final lightColorScheme = ColorScheme.fromSeed(

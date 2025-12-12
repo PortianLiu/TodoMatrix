@@ -334,26 +334,33 @@ class SettingsPanel extends ConsumerWidget {
     String statusText;
     IconData statusIcon;
     Color? statusColor;
+    bool isAnimating = false;
 
     switch (status) {
       case SyncStatus.idle:
-        statusText = '空闲';
-        statusIcon = Icons.cloud_outlined;
+        statusText = syncState.isListening 
+            ? '监听中 (${syncState.devices.length} 个设备在线)'
+            : '未启动';
+        statusIcon = syncState.isListening ? Icons.wifi : Icons.cloud_outlined;
+        statusColor = syncState.devices.isNotEmpty ? Colors.green : null;
         break;
-      case SyncStatus.discovering:
-        statusText = '正在搜索设备...';
-        statusIcon = Icons.search;
+      case SyncStatus.broadcasting:
+        statusText = '正在广播...';
+        statusIcon = Icons.sync;
         statusColor = Colors.blue;
+        isAnimating = true;
         break;
       case SyncStatus.connecting:
         statusText = syncState.message ?? '正在连接...';
         statusIcon = Icons.sync;
         statusColor = Colors.orange;
+        isAnimating = true;
         break;
       case SyncStatus.syncing:
         statusText = syncState.message ?? '正在同步...';
         statusIcon = Icons.sync;
         statusColor = Colors.orange;
+        isAnimating = true;
         break;
       case SyncStatus.completed:
         statusText = syncState.lastResult?.toString() ?? '同步完成';
@@ -368,18 +375,23 @@ class SettingsPanel extends ConsumerWidget {
     }
 
     return ListTile(
-      leading: Icon(statusIcon, color: statusColor),
+      leading: _SyncStatusIcon(
+        icon: statusIcon,
+        color: statusColor,
+        isAnimating: isAnimating,
+      ),
       title: const Text('同步状态'),
       subtitle: Text(statusText),
-      trailing: status == SyncStatus.discovering
-          ? IconButton(
-              icon: const Icon(Icons.stop),
-              onPressed: () => ref.read(syncProvider.notifier).stopDiscovery(),
-            )
-          : IconButton(
-              icon: const Icon(Icons.refresh),
-              onPressed: () => ref.read(syncProvider.notifier).startDiscovery(),
-            ),
+      trailing: IconButton(
+        icon: const Icon(Icons.sync),
+        tooltip: '立即同步',
+        onPressed: () async {
+          final settings = ref.read(localSettingsProvider);
+          final notifier = ref.read(syncProvider.notifier);
+          await notifier.initialize(settings.deviceName);
+          await notifier.broadcastAndSync();
+        },
+      ),
     );
   }
 
@@ -758,6 +770,76 @@ class _ReorderableWrapState extends State<ReorderableWrap> {
           ),
         );
       }),
+    );
+  }
+}
+
+/// 同步状态图标（带旋转动画）
+class _SyncStatusIcon extends StatefulWidget {
+  final IconData icon;
+  final Color? color;
+  final bool isAnimating;
+
+  const _SyncStatusIcon({
+    required this.icon,
+    this.color,
+    this.isAnimating = false,
+  });
+
+  @override
+  State<_SyncStatusIcon> createState() => _SyncStatusIconState();
+}
+
+class _SyncStatusIconState extends State<_SyncStatusIcon>
+    with SingleTickerProviderStateMixin {
+  late AnimationController _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      duration: const Duration(milliseconds: 1000),
+      vsync: this,
+    );
+    if (widget.isAnimating) {
+      _controller.repeat();
+    }
+  }
+
+  @override
+  void didUpdateWidget(_SyncStatusIcon oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.isAnimating && !oldWidget.isAnimating) {
+      _controller.repeat();
+    } else if (!widget.isAnimating && oldWidget.isAnimating) {
+      _controller.forward().then((_) {
+        if (!widget.isAnimating) {
+          _controller.reset();
+        }
+      });
+    }
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (!widget.isAnimating) {
+      return Icon(widget.icon, color: widget.color);
+    }
+
+    return AnimatedBuilder(
+      animation: _controller,
+      builder: (context, child) {
+        return Transform.rotate(
+          angle: _controller.value * 2 * 3.14159,
+          child: Icon(widget.icon, color: widget.color),
+        );
+      },
     );
   }
 }

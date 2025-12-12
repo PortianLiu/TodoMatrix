@@ -89,26 +89,51 @@ class DataNotifier extends StateNotifier<AppDataState> {
   DataNotifier(this._storage) : super(AppDataState.empty());
 
   /// 加载数据
+  /// 注意：此方法在 main.dart 中预调用，确保数据在应用启动前加载完成
   Future<void> loadData() async {
+    // 如果已经有数据（非空列表或非默认设置），跳过重复加载
+    if (state.lists.isNotEmpty || state.settings.themeColor != '9999ff') {
+      debugPrint('[DataNotifier] 数据已加载，跳过重复加载');
+      return;
+    }
     if (state.isLoading) return;
     state = state.copyWith(isLoading: true);
 
     try {
+      debugPrint('[DataNotifier] ========== 开始加载数据 ==========');
+      
       // 尝试从旧版迁移
-      await _storage.migrateFromLegacy();
+      final migrated = await _storage.migrateFromLegacy();
+      debugPrint('[DataNotifier] 迁移结果: $migrated');
 
       // 加载清单
       final manifest = await _storage.loadManifest();
-      debugPrint('[DataNotifier] 加载清单完成，${manifest.lists.length} 个列表');
+      debugPrint('[DataNotifier] 加载清单完成:');
+      debugPrint('[DataNotifier]   - 列表数量: ${manifest.lists.length}');
+      debugPrint('[DataNotifier]   - 列表顺序: ${manifest.listOrder}');
+      for (final meta in manifest.lists) {
+        debugPrint('[DataNotifier]   - 列表: ${meta.id} (${meta.title})');
+      }
 
       // 加载所有列表
       final listsList = await _storage.loadAllLists(manifest);
       final lists = {for (var l in listsList) l.id: l};
-      debugPrint('[DataNotifier] 加载列表完成，${lists.length} 个');
+      debugPrint('[DataNotifier] 加载列表完成:');
+      debugPrint('[DataNotifier]   - 成功加载: ${lists.length} 个');
+      for (final list in lists.values) {
+        debugPrint('[DataNotifier]   - ${list.id}: ${list.title} (${list.items.length} 项)');
+      }
 
       // 加载本地设置
       final settings = await _storage.loadLocalSettings();
-      debugPrint('[DataNotifier] 加载设置完成');
+      debugPrint('[DataNotifier] 加载设置完成:');
+      debugPrint('[DataNotifier]   - themeColor: ${settings.themeColor}');
+      debugPrint('[DataNotifier]   - deviceName: ${settings.deviceName}');
+      debugPrint('[DataNotifier]   - columnsPerRow: ${settings.columnsPerRow}');
+      debugPrint('[DataNotifier]   - listHeight: ${settings.listHeight}');
+      debugPrint('[DataNotifier]   - syncEnabled: ${settings.syncEnabled}');
+      debugPrint('[DataNotifier]   - windowX: ${settings.windowX}');
+      debugPrint('[DataNotifier]   - windowY: ${settings.windowY}');
 
       state = AppDataState(
         manifest: manifest,
@@ -116,6 +141,9 @@ class DataNotifier extends StateNotifier<AppDataState> {
         settings: settings,
         isLoading: false,
       );
+      
+      debugPrint('[DataNotifier] ========== 数据加载完成 ==========');
+      debugPrint('[DataNotifier] 最终状态: ${state.lists.length} 个列表');
     } catch (e, stackTrace) {
       debugPrint('[DataNotifier] 加载数据失败: $e');
       debugPrint('[DataNotifier] 堆栈: $stackTrace');

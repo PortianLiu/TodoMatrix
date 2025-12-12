@@ -23,27 +23,13 @@ class MainScreen extends ConsumerStatefulWidget {
 }
 
 class _MainScreenState extends ConsumerState<MainScreen> {
-  bool _isLoading = true;
-
   @override
   void initState() {
     super.initState();
-    _loadData();
-  }
-
-  Future<void> _loadData() async {
-    try {
-      await ref.read(dataProvider.notifier).loadData();
-    } catch (e, stackTrace) {
-      debugPrint('[MainScreen] 加载数据异常: $e');
-      debugPrint('[MainScreen] 堆栈: $stackTrace');
-    } finally {
-      if (mounted) {
-        setState(() => _isLoading = false);
-        // 应用保存的窗口设置（仅 Windows）
-        _applyWindowSettings();
-      }
-    }
+    // 数据已在 main.dart 中预加载，这里只需应用窗口设置
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _applyWindowSettings();
+    });
   }
 
   /// 应用保存的窗口设置
@@ -63,7 +49,9 @@ class _MainScreenState extends ConsumerState<MainScreen> {
 
   @override
   Widget build(BuildContext context) {
-    if (_isLoading) {
+    // 检查数据是否正在加载
+    final dataState = ref.watch(dataProvider);
+    if (dataState.isLoading) {
       return Scaffold(
         backgroundColor: Theme.of(context).colorScheme.surface,
         body: const Center(child: CircularProgressIndicator()),

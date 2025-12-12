@@ -5,7 +5,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'providers/data_provider.dart';
-import 'services/sync_storage_service.dart';
 import 'services/window_service.dart';
 import 'widgets/main_screen.dart';
 
@@ -19,6 +18,12 @@ void main() async {
   // 创建 ProviderContainer
   _container = ProviderContainer();
 
+  // 预加载数据（在窗口初始化之前）
+  // 这样可以确保设置数据在应用启动时就已经加载完成
+  debugPrint('[Main] 开始预加载数据...');
+  await _container.read(dataProvider.notifier).loadData();
+  debugPrint('[Main] 数据预加载完成');
+
   // Windows 平台初始化窗口服务
   if (!kIsWeb && Platform.isWindows) {
     await WindowService.instance.initialize();
@@ -30,7 +35,7 @@ void main() async {
       exit(0);
     };
     
-    // 预加载数据以获取保存的窗口位置
+    // 使用已加载的设置恢复窗口位置
     await _restoreWindowBounds();
     
     // 设置窗口位置/大小变化回调
@@ -48,9 +53,9 @@ void main() async {
 /// 恢复保存的窗口位置和大小
 Future<void> _restoreWindowBounds() async {
   try {
-    // 直接从存储服务加载数据
-    final storageService = SyncStorageService();
-    final settings = await storageService.loadLocalSettings();
+    // 使用已加载的设置（不再创建新的存储服务实例）
+    final settings = _container.read(localSettingsProvider);
+    debugPrint('[Main] 恢复窗口位置: x=${settings.windowX}, y=${settings.windowY}, w=${settings.windowWidth}, h=${settings.windowHeight}');
     
     // 恢复窗口位置和大小
     await WindowService.instance.restoreWindowBounds(
@@ -59,10 +64,8 @@ Future<void> _restoreWindowBounds() async {
       width: settings.windowWidth,
       height: settings.windowHeight,
     );
-    
-    storageService.dispose();
   } catch (e) {
-    debugPrint('恢复窗口位置失败: $e');
+    debugPrint('[Main] 恢复窗口位置失败: $e');
   }
 }
 

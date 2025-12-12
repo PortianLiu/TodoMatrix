@@ -86,7 +86,7 @@ class DiscoveryService {
         _deviceName = deviceName,
         _version = version;
 
-  /// 启动设备发现
+  /// 启动设备发现（仅启动监听，不自动广播）
   Future<void> startDiscovery() async {
     if (_socket != null) {
       debugPrint('[Discovery] 服务已在运行中');
@@ -127,16 +127,13 @@ class DiscoveryService {
       );
       debugPrint('[Discovery] 开始监听 UDP 数据包...');
 
-      // 开始定期广播
-      _broadcastTimer = Timer.periodic(broadcastInterval, (_) => broadcastPresence());
+      // 注意：不再自动定期广播，广播仅在用户点击同步按钮时触发
+      // _broadcastTimer 已移除
 
       // 开始定期清理过期设备
       _cleanupTimer = Timer.periodic(deviceTimeout, (_) => _cleanupExpiredDevices());
-
-      // 立即广播一次
-      await broadcastPresence();
       
-      debugPrint('[Discovery] ========== 设备发现服务启动完成 ==========');
+      debugPrint('[Discovery] ========== 设备发现服务启动完成（仅监听模式）==========');
     } catch (e, stackTrace) {
       debugPrint('[Discovery] 设备发现服务启动失败: $e');
       debugPrint('[Discovery] 堆栈: $stackTrace');

@@ -117,9 +117,17 @@ class _TodoListWidgetState extends ConsumerState<TodoListWidget> {
   }
 
   /// 构建标题或输入框
-  /// 鼠标悬停在标题区或输入框有焦点时显示输入框，否则显示标题
+  /// Windows：鼠标悬停在标题区或输入框有焦点时显示输入框，否则显示标题
+  /// 移动端：始终显示输入框（因为标签栏已显示标题）
   Widget _buildTitleOrInput(TodoList list) {
-    // 只有悬停在标题区或输入框有焦点时才显示输入框
+    final isWindows = Theme.of(context).platform == TargetPlatform.windows;
+    
+    // 移动端始终显示输入框
+    if (!isWindows) {
+      return _buildAddItemInput(list);
+    }
+    
+    // Windows：只有悬停在标题区或输入框有焦点时才显示输入框
     final showInput = _isHoveringHeader || _addItemFocusNode.hasFocus;
     
     if (showInput) {

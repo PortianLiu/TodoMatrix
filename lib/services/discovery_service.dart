@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:flutter/foundation.dart';
 import 'package:uuid/uuid.dart';
 
 /// 设备信息
@@ -91,11 +92,11 @@ class DiscoveryService {
 
     try {
       // 绑定 UDP 端口
+      // 注意：reusePort 在 Windows/Android 上不支持，只使用 reuseAddress
       _socket = await RawDatagramSocket.bind(
         InternetAddress.anyIPv4,
         discoveryPort,
         reuseAddress: true,
-        reusePort: true,
       );
 
       // 启用广播
@@ -112,9 +113,10 @@ class DiscoveryService {
 
       // 立即广播一次
       await broadcastPresence();
+      
+      debugPrint('[Discovery] 设备发现服务已启动，端口: $discoveryPort');
     } catch (e) {
-      // 端口可能被占用，忽略错误
-      print('Discovery service start failed: $e');
+      debugPrint('[Discovery] 设备发现服务启动失败: $e');
     }
   }
 
@@ -134,6 +136,7 @@ class DiscoveryService {
   }
 
   /// 广播自身存在
+  /// 向所有网络接口的广播地址发送消息
   Future<void> broadcastPresence() async {
     if (_socket == null) return;
 
@@ -148,12 +151,41 @@ class DiscoveryService {
 
     final data = utf8.encode(jsonEncode(message));
 
-    // 广播到局域网
-    _socket!.send(
-      data,
-      InternetAddress('255.255.255.255'),
-      discoveryPort,
-    );
+    try {
+      // 获取所有网络接口，向每个接口的广播地址发送
+      final interfaces = await NetworkInterface.list(
+        type: InternetAddressType.IPv4,
+      );
+      
+      for (final interface in interfaces) {
+        // 跳过回环接口和虚拟接口（VMware、VirtualBox 等）
+        final name = interface.name.toLowerCase();
+        if (name.contains('loopback') || 
+            name.contains('vmware') || 
+            name.contains('virtualbox') ||
+            name.contains('vbox') ||
+            name.contains('docker')) {
+          continue;
+        }
+        
+        for (final addr in interface.addresses) {
+          // 计算广播地址（简化：假设 /24 子网）
+          final parts = addr.address.split('.');
+          if (parts.length == 4) {
+            final broadcastAddr = '${parts[0]}.${parts[1]}.${parts[2]}.255';
+            _socket!.send(data, InternetAddress(broadcastAddr), discoveryPort);
+            debugPrint('[Discovery] 广播到 $broadcastAddr (${interface.name})');
+          }
+        }
+      }
+      
+      // 同时发送到通用广播地址
+      _socket!.send(data, InternetAddress('255.255.255.255'), discoveryPort);
+    } catch (e) {
+      debugPrint('[Discovery] 广播失败: $e');
+      // 回退到通用广播
+      _socket!.send(data, InternetAddress('255.255.255.255'), discoveryPort);
+    }
   }
 
   /// 处理接收到的数据报

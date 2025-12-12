@@ -64,27 +64,17 @@ class _TodoItemWidgetState extends ConsumerState<TodoItemWidget> {
 
 
   Widget _buildContent() {
-    // 跨列表拖拽（长按触发）
-    return LongPressDraggable<Map<String, String>>(
-      data: {
-        'sourceListId': widget.listId,
-        'itemId': widget.item.id,
+    // 移动端：不使用跨列表拖拽，避免干扰列表内排序
+    // Windows 端：跨列表拖拽功能暂时禁用（后续再实现）
+    return GestureDetector(
+      onSecondaryTapUp: (details) => _showContextMenuAt(details.globalPosition),
+      onLongPress: () {
+        // 触摸/笔触场景下长按显示菜单
+        if (!_isMouseDevice) {
+          _showContextMenuAtCenter();
+        }
       },
-      feedback: _buildDragFeedback(),
-      childWhenDragging: Opacity(
-        opacity: 0.5,
-        child: _buildItemContent(),
-      ),
-      child: GestureDetector(
-        onSecondaryTapUp: (details) => _showContextMenuAt(details.globalPosition),
-        onLongPress: () {
-          // 触摸/笔触场景下长按显示菜单
-          if (!_isMouseDevice) {
-            _showContextMenuAtCenter();
-          }
-        },
-        child: _buildItemContent(),
-      ),
+      child: _buildItemContent(),
     );
   }
 

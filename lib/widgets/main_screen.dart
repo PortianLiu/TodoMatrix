@@ -32,11 +32,17 @@ class _MainScreenState extends ConsumerState<MainScreen> {
   }
 
   Future<void> _loadData() async {
-    await ref.read(dataProvider.notifier).loadData();
-    if (mounted) {
-      setState(() => _isLoading = false);
-      // 应用保存的窗口设置（仅 Windows）
-      _applyWindowSettings();
+    try {
+      await ref.read(dataProvider.notifier).loadData();
+    } catch (e, stackTrace) {
+      debugPrint('[MainScreen] 加载数据异常: $e');
+      debugPrint('[MainScreen] 堆栈: $stackTrace');
+    } finally {
+      if (mounted) {
+        setState(() => _isLoading = false);
+        // 应用保存的窗口设置（仅 Windows）
+        _applyWindowSettings();
+      }
     }
   }
 

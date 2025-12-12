@@ -105,19 +105,24 @@ class ThemeColors {
 }
 
 /// 预设列表底色
+/// 注意：这些颜色会在显示时添加透明度，以适配深色模式
 class ListColors {
+  /// 预设颜色（纯色，不含透明度）
   static const List<String> presetColors = [
-    'ffffff', // 白色（默认）
-    'fff3e0', // 浅橙
-    'e3f2fd', // 浅蓝
-    'f3e5f5', // 浅紫
-    'e8f5e9', // 浅绿
-    'fff8e1', // 浅黄
-    'fce4ec', // 浅粉
-    'e0f7fa', // 浅青
-    'f5f5f5', // 浅灰
-    'ede7f6', // 淡紫
+    'ffffff', // 白色/透明（默认）
+    'ff9800', // 橙色
+    '2196f3', // 蓝色
+    '9c27b0', // 紫色
+    '4caf50', // 绿色
+    'ffeb3b', // 黄色
+    'e91e63', // 粉色
+    '00bcd4', // 青色
+    '9e9e9e', // 灰色
+    '673ab7', // 深紫
   ];
+
+  /// 列表底色透明度（用于适配深浅色模式）
+  static const double colorOpacity = 0.15;
 }
 
 /// 应用设置

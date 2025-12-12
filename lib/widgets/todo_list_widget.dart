@@ -16,6 +16,18 @@ Color _hexToColor(String hex) {
   return Color(int.parse(hex, radix: 16));
 }
 
+/// 将颜色转换为带透明度的版本（用于列表底色）
+/// 这样可以在深色模式下与背景混合，产生合适的效果
+Color _toListBackgroundColor(String hex, BuildContext context) {
+  if (hex == 'ffffff') {
+    // 白色/透明：使用卡片默认颜色
+    return Theme.of(context).cardColor;
+  }
+  final baseColor = _hexToColor(hex);
+  // 使用 0.15 透明度，让颜色与背景混合
+  return baseColor.withValues(alpha: 0.15);
+}
+
 /// 待办列表组件
 class TodoListWidget extends ConsumerStatefulWidget {
   final String listId;
@@ -65,9 +77,9 @@ class _TodoListWidgetState extends ConsumerState<TodoListWidget> {
     final list = ref.watch(todoListProvider(widget.listId));
     if (list == null) return const SizedBox.shrink();
 
-    // 获取列表底色
+    // 获取列表底色（带透明度，适配深浅色模式）
     final bgColor = list.backgroundColor != null
-        ? _hexToColor(list.backgroundColor!)
+        ? _toListBackgroundColor(list.backgroundColor!, context)
         : Theme.of(context).cardColor;
 
     return Card(

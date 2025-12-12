@@ -113,8 +113,8 @@ class _TodoItemWidgetState extends ConsumerState<TodoItemWidget> {
       child: ListTile(
         dense: true,
         visualDensity: const VisualDensity(horizontal: -2, vertical: -2),
-        contentPadding: const EdgeInsets.only(left: 8, right: 6),
-        horizontalTitleGap: 6,
+        contentPadding: const EdgeInsets.only(left: 0, right: 6),
+        horizontalTitleGap: 0,
         leading: _buildDragHandle(),
         title: _buildTitle(),
         subtitle: _buildSubtitle(),
@@ -126,15 +126,20 @@ class _TodoItemWidgetState extends ConsumerState<TodoItemWidget> {
 
   /// 构建拖拽手柄
   /// 鼠标设备：整个项可拖拽（手柄只是视觉提示）
-  /// 触摸/笔触：只有手柄区域可拖拽
+  /// 触摸/笔触：只有手柄区域可拖拽（扩大触摸区域）
   Widget _buildDragHandle() {
-    final handle = Icon(
-      Icons.drag_indicator,
-      color: Theme.of(context).colorScheme.outline.withValues(alpha: 0.5),
-      size: 16,
+    final handle = Padding(
+      // 把 ListTile 的左边距和 horizontalTitleGap 吸收为手柄的内边距
+      // 这样触摸区域更大，但视觉位置不变
+      padding: const EdgeInsets.only(left: 8, right: 12, top: 8, bottom: 8),
+      child: Icon(
+        Icons.drag_indicator,
+        color: Theme.of(context).colorScheme.outline.withValues(alpha: 0.5),
+        size: 16,
+      ),
     );
 
-    // 触摸/笔触设备：只有手柄区域响应拖拽
+    // ��摸/笔触设备：只有手柄区域响应拖拽
     if (!_isMouseDevice) {
       return ReorderableDragStartListener(
         index: widget.index,

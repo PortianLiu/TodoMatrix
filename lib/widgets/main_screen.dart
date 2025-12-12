@@ -64,20 +64,23 @@ class _MainScreenState extends ConsumerState<MainScreen> {
       );
     }
 
-    // Windows 平台使用自定义标题栏
+    // Windows 平台使用自定义标题栏 + 网格布局
+    // 移动端使用标签页布局
     final isWindows = !kIsWeb && Platform.isWindows;
 
-    return Scaffold(
-      backgroundColor: Theme.of(context).colorScheme.surface,
-      body: Column(
-        children: [
-          // 自定义标题栏
-          if (isWindows) _buildCustomTitleBar(),
-          // 主内容
-          Expanded(child: _buildBody()),
-        ],
-      ),
-    );
+    if (isWindows) {
+      return Scaffold(
+        backgroundColor: Theme.of(context).colorScheme.surface,
+        body: Column(
+          children: [
+            _buildCustomTitleBar(),
+            Expanded(child: _buildWindowsBody()),
+          ],
+        ),
+      );
+    } else {
+      return _buildMobileLayout();
+    }
   }
 
   /// 构建自定义标题栏（Windows）- 仅用于拖拽和工具栏
@@ -163,7 +166,8 @@ class _MainScreenState extends ConsumerState<MainScreen> {
     );
   }
 
-  Widget _buildBody() {
+  /// Windows 端主体内容（网格布局）
+  Widget _buildWindowsBody() {
     final lists = ref.watch(sortedListsProvider);
 
     if (lists.isEmpty) {
@@ -172,6 +176,81 @@ class _MainScreenState extends ConsumerState<MainScreen> {
 
     final columns = ref.watch(columnsPerRowProvider);
     return _buildGridView(lists, columns);
+  }
+
+  /// 移动端布局（标签页）
+  Widget _buildMobileLayout() {
+    final lists = ref.watch(sortedListsProvider);
+
+    if (lists.isEmpty) {
+      return Scaffold(
+        backgroundColor: Theme.of(context).colorScheme.surface,
+        appBar: _buildMobileAppBar(),
+        body: _buildEmptyState(),
+      );
+    }
+
+    return DefaultTabController(
+      length: lists.length,
+      child: Scaffold(
+        backgroundColor: Theme.of(context).colorScheme.surface,
+        appBar: _buildMobileAppBar(),
+        body: Column(
+          children: [
+            // 标签栏
+            Container(
+              color: Theme.of(context).colorScheme.surface,
+              child: TabBar(
+                isScrollable: true,
+                tabAlignment: TabAlignment.start,
+                tabs: lists.map((list) => Tab(text: list.title)).toList(),
+              ),
+            ),
+            // 标签页内容
+            Expanded(
+              child: TabBarView(
+                children: lists.map((list) {
+                  return Padding(
+                    padding: const EdgeInsets.all(12),
+                    child: TodoListWidget(listId: list.id),
+                  );
+                }).toList(),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// 移动端 AppBar
+  PreferredSizeWidget _buildMobileAppBar() {
+    return AppBar(
+      title: Row(
+        children: [
+          Icon(
+            Icons.checklist,
+            size: 20,
+            color: Theme.of(context).colorScheme.onPrimaryContainer,
+          ),
+          const SizedBox(width: 8),
+          const Text('TodoMatrix'),
+        ],
+      ),
+      backgroundColor: Theme.of(context).colorScheme.primaryContainer,
+      actions: [
+        IconButton(
+          icon: const Icon(Icons.add),
+          tooltip: '新建列表',
+          onPressed: _createNewList,
+        ),
+        IconButton(
+          icon: const Icon(Icons.settings_outlined),
+          tooltip: '设置',
+          onPressed: _openSettings,
+        ),
+      ],
+    );
   }
 
 

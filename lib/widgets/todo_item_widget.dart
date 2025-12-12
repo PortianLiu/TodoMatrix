@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../models/models.dart';
-import '../providers/todo_provider.dart';
+import '../providers/data_provider.dart';
 
 /// 待办项组件
 /// 显示单个待办项，支持完成状态切换、描述编辑、优先级显示等
@@ -269,7 +269,7 @@ class _TodoItemWidgetState extends ConsumerState<TodoItemWidget> {
 
 
   void _toggleCompleted() {
-    ref.read(appDataProvider.notifier).toggleTodoCompleted(
+    ref.read(dataProvider.notifier).toggleTodoCompleted(
           widget.listId,
           widget.item.id,
         );
@@ -280,7 +280,7 @@ class _TodoItemWidgetState extends ConsumerState<TodoItemWidget> {
       final newDescription = _editController.text.trim();
       if (newDescription.isNotEmpty &&
           newDescription != widget.item.description) {
-        ref.read(appDataProvider.notifier).updateTodoDescription(
+        ref.read(dataProvider.notifier).updateTodoDescription(
               widget.listId,
               widget.item.id,
               newDescription,
@@ -382,7 +382,7 @@ class _TodoItemWidgetState extends ConsumerState<TodoItemWidget> {
           }
           return SimpleDialogOption(
             onPressed: () {
-              ref.read(appDataProvider.notifier).setTodoPriority(
+              ref.read(dataProvider.notifier).setTodoPriority(
                     widget.listId,
                     widget.item.id,
                     priority,
@@ -424,7 +424,7 @@ class _TodoItemWidgetState extends ConsumerState<TodoItemWidget> {
     );
 
     if (date != null) {
-      ref.read(appDataProvider.notifier).setTodoDueDate(
+      ref.read(dataProvider.notifier).setTodoDueDate(
             widget.listId,
             widget.item.id,
             date,
@@ -450,7 +450,7 @@ class _TodoItemWidgetState extends ConsumerState<TodoItemWidget> {
         children: otherLists.map((list) {
           return SimpleDialogOption(
             onPressed: () {
-              ref.read(appDataProvider.notifier).moveTodoItemToList(
+              ref.read(dataProvider.notifier).moveTodoItemToList(
                     widget.listId,
                     list.id,
                     widget.item.id,
@@ -465,7 +465,7 @@ class _TodoItemWidgetState extends ConsumerState<TodoItemWidget> {
   }
 
   void _deleteItem() {
-    ref.read(appDataProvider.notifier).deleteTodoItem(
+    ref.read(dataProvider.notifier).deleteTodoItem(
           widget.listId,
           widget.item.id,
         );

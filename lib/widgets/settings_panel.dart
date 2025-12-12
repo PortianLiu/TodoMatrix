@@ -7,9 +7,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:window_manager/window_manager.dart';
 
 import '../models/settings.dart';
-import '../providers/layout_provider.dart';
+import '../providers/data_provider.dart';
 import '../providers/sync_provider.dart';
-import '../providers/todo_provider.dart';
 import '../services/discovery_service.dart';
 import '../services/window_service.dart';
 import 'color_picker_dialog.dart';
@@ -29,8 +28,7 @@ class SettingsPanel extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final settings = ref.watch(appSettingsProvider);
-    final layoutSettings = ref.watch(layoutSettingsProvider);
+    final settings = ref.watch(localSettingsProvider);
     final isWindows = !kIsWeb && Platform.isWindows;
 
     return Scaffold(
@@ -45,8 +43,8 @@ class SettingsPanel extends ConsumerWidget {
 
           // 布局设置
           _buildSectionHeader(context, '布局'),
-          _buildColumnsTile(context, ref, layoutSettings.columnsPerRow),
-          _buildListHeightTile(context, ref, layoutSettings.listHeight),
+          _buildColumnsTile(context, ref, settings.columnsPerRow),
+          _buildListHeightTile(context, ref, settings.listHeight),
           _buildListOrderTile(context, ref),
           const Divider(),
 
@@ -163,7 +161,7 @@ class SettingsPanel extends ConsumerWidget {
       groupValue: currentMode,
       onChanged: (value) {
         if (value != null) {
-          ref.read(appDataProvider.notifier).setThemeMode(value);
+          ref.read(dataProvider.notifier).setThemeMode(value);
           Navigator.of(context).pop();
         }
       },
@@ -198,7 +196,7 @@ class SettingsPanel extends ConsumerWidget {
         currentColor: currentColor,
         presetColors: ThemeColors.presetColors,
         onColorSelected: (colorHex) {
-          ref.read(appDataProvider.notifier).setThemeColor(colorHex);
+          ref.read(dataProvider.notifier).setThemeColor(colorHex);
         },
       ),
     );
@@ -218,14 +216,14 @@ class SettingsPanel extends ConsumerWidget {
             IconButton(
               icon: const Icon(Icons.remove),
               onPressed: currentColumns > 1
-                  ? () => ref.read(appDataProvider.notifier).setColumnsPerRow(currentColumns - 1)
+                  ? () => ref.read(dataProvider.notifier).setColumnsPerRow(currentColumns - 1)
                   : null,
             ),
             Text('$currentColumns', style: Theme.of(context).textTheme.titleMedium),
             IconButton(
               icon: const Icon(Icons.add),
               onPressed: currentColumns < 10
-                  ? () => ref.read(appDataProvider.notifier).setColumnsPerRow(currentColumns + 1)
+                  ? () => ref.read(dataProvider.notifier).setColumnsPerRow(currentColumns + 1)
                   : null,
             ),
           ],
@@ -249,7 +247,7 @@ class SettingsPanel extends ConsumerWidget {
           divisions: 12,
           label: '${currentHeight.toInt()}',
           onChanged: (value) {
-            ref.read(appDataProvider.notifier).setListHeight(value);
+            ref.read(dataProvider.notifier).setListHeight(value);
           },
         ),
       ),
@@ -270,8 +268,8 @@ class SettingsPanel extends ConsumerWidget {
       subtitle: Text(syncEnabled ? '已启用' : '已禁用'),
       value: syncEnabled,
       onChanged: (value) {
-        final currentSettings = ref.read(appSettingsProvider);
-        ref.read(appDataProvider.notifier).updateSettings(
+        final currentSettings = ref.read(localSettingsProvider);
+        ref.read(dataProvider.notifier).updateSettings(
               currentSettings.copyWith(syncEnabled: value),
             );
       },
@@ -314,8 +312,8 @@ class SettingsPanel extends ConsumerWidget {
             onPressed: () {
               final newName = controller.text.trim();
               if (newName.isNotEmpty) {
-                final currentSettings = ref.read(appSettingsProvider);
-                ref.read(appDataProvider.notifier).updateSettings(
+                final currentSettings = ref.read(localSettingsProvider);
+                ref.read(dataProvider.notifier).updateSettings(
                       currentSettings.copyWith(deviceName: newName),
                     );
               }
@@ -426,8 +424,8 @@ class SettingsPanel extends ConsumerWidget {
       subtitle: const Text('窗口半透明置顶，不占用任务栏位置'),
       value: enabled,
       onChanged: (value) async {
-        final currentSettings = ref.read(appSettingsProvider);
-        ref.read(appDataProvider.notifier).updateSettings(
+        final currentSettings = ref.read(localSettingsProvider);
+        ref.read(dataProvider.notifier).updateSettings(
               currentSettings.copyWith(pinToDesktop: value),
             );
         // 应用窗口设置（使用保存的透明度）
@@ -451,8 +449,8 @@ class SettingsPanel extends ConsumerWidget {
           divisions: 14,
           label: '${(opacity * 100).toInt()}%',
           onChanged: (value) async {
-            final currentSettings = ref.read(appSettingsProvider);
-            ref.read(appDataProvider.notifier).updateSettings(
+            final currentSettings = ref.read(localSettingsProvider);
+            ref.read(dataProvider.notifier).updateSettings(
                   currentSettings.copyWith(pinOpacity: value),
                 );
             // 实时应用透明度
@@ -471,8 +469,8 @@ class SettingsPanel extends ConsumerWidget {
       subtitle: const Text('窗口贴边后自动隐藏，鼠标靠近时滑出'),
       value: enabled,
       onChanged: (value) async {
-        final currentSettings = ref.read(appSettingsProvider);
-        ref.read(appDataProvider.notifier).updateSettings(
+        final currentSettings = ref.read(localSettingsProvider);
+        ref.read(dataProvider.notifier).updateSettings(
               currentSettings.copyWith(edgeHideEnabled: value),
             );
         // 应用窗口设置
@@ -549,8 +547,8 @@ class SettingsPanel extends ConsumerWidget {
       );
 
       if (confirmed == true) {
-        final currentSettings = ref.read(appSettingsProvider);
-        ref.read(appDataProvider.notifier).updateSettings(
+        final currentSettings = ref.read(localSettingsProvider);
+        ref.read(dataProvider.notifier).updateSettings(
               currentSettings.copyWith(customDataPath: result),
             );
         // 提示重启
@@ -584,8 +582,8 @@ class SettingsPanel extends ConsumerWidget {
     );
 
     if (confirmed == true) {
-      final currentSettings = ref.read(appSettingsProvider);
-      ref.read(appDataProvider.notifier).updateSettings(
+      final currentSettings = ref.read(localSettingsProvider);
+      ref.read(dataProvider.notifier).updateSettings(
             currentSettings.copyWith(clearCustomDataPath: true),
           );
       if (context.mounted) {
@@ -661,7 +659,7 @@ class _ListOrderSectionState extends ConsumerState<_ListOrderSection> {
               final currentOrder = lists.map((l) => l.id).toList();
               final item = currentOrder.removeAt(oldIndex);
               currentOrder.insert(newIndex, item);
-              ref.read(appDataProvider.notifier).updateListOrder(currentOrder);
+              ref.read(dataProvider.notifier).updateListOrder(currentOrder);
             },
             children: lists.map((list) {
               return _buildListChip(context, list);

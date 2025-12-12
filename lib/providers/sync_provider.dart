@@ -4,7 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../services/discovery_service.dart';
 import '../services/sync_service.dart';
-import 'todo_provider.dart';
+import 'data_provider.dart';
 
 /// 同步状态
 enum SyncStatus {
@@ -59,17 +59,14 @@ class SyncNotifier extends StateNotifier<SyncState> {
 
   /// 初始化同步服务
   Future<void> initialize(String deviceName) async {
-    final appData = _ref.read(appDataProvider);
+    final settings = _ref.read(localSettingsProvider);
 
     _discoveryService = DiscoveryService(deviceName: deviceName);
-    _syncService = SyncService(deviceId: appData.settings.deviceName);
+    _syncService = SyncService(deviceId: settings.deviceName);
 
-    // 设置数据回调
-    _syncService!.getLocalData = () => _ref.read(appDataProvider);
-    _syncService!.onDataUpdated = (data) {
-      // 这里需要更新 appData，但由于是外部更新，需要特殊处理
-      // 实际实现中可能需要一个专门的方法
-    };
+    // 设置数据回调（暂时保留，后续重构同步逻辑）
+    // _syncService!.getLocalData = () => ...;
+    // _syncService!.onDataUpdated = (data) => ...;
 
     // 监听设备发现
     _devicesSub = _discoveryService!.discoveredDevices.listen((devices) {

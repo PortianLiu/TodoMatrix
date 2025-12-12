@@ -3,8 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../models/models.dart';
-import '../models/settings.dart';
-import '../providers/todo_provider.dart';
+import '../providers/data_provider.dart';
 import 'color_picker_dialog.dart';
 import 'todo_item_widget.dart';
 
@@ -242,7 +241,7 @@ class _TodoListWidgetState extends ConsumerState<TodoListWidget> {
           ),
           onSubmitted: (value) {
             if (value.trim().isNotEmpty) {
-              ref.read(appDataProvider.notifier).updateListTitle(
+              ref.read(dataProvider.notifier).updateListTitle(
                     widget.listId,
                     value.trim(),
                   );
@@ -259,7 +258,7 @@ class _TodoListWidgetState extends ConsumerState<TodoListWidget> {
             onPressed: () {
               final newTitle = controller.text.trim();
               if (newTitle.isNotEmpty) {
-                ref.read(appDataProvider.notifier).updateListTitle(
+                ref.read(dataProvider.notifier).updateListTitle(
                       widget.listId,
                       newTitle,
                     );
@@ -282,7 +281,7 @@ class _TodoListWidgetState extends ConsumerState<TodoListWidget> {
         presetColors: ListColors.presetColors,
         isCircle: false,
         onColorSelected: (colorHex) {
-          ref.read(appDataProvider.notifier).updateListColor(
+          ref.read(dataProvider.notifier).updateListColor(
                 widget.listId,
                 colorHex == 'ffffff' ? null : colorHex,
               );
@@ -304,7 +303,7 @@ class _TodoListWidgetState extends ConsumerState<TodoListWidget> {
           ),
           FilledButton(
             onPressed: () {
-              ref.read(appDataProvider.notifier).deleteList(widget.listId);
+              ref.read(dataProvider.notifier).deleteList(widget.listId);
               Navigator.pop(context);
             },
             child: const Text('删除'),
@@ -341,7 +340,7 @@ class _TodoListWidgetState extends ConsumerState<TodoListWidget> {
         final actualOldIndex = list.items.length - 1 - oldIndex;
         var actualNewIndex = list.items.length - 1 - newIndex;
         if (newIndex > oldIndex) actualNewIndex++;
-        ref.read(appDataProvider.notifier).moveTodoItemInList(
+        ref.read(dataProvider.notifier).moveTodoItemInList(
               widget.listId,
               actualOldIndex,
               actualNewIndex,
@@ -366,7 +365,7 @@ class _TodoListWidgetState extends ConsumerState<TodoListWidget> {
   void _addItem() {
     final description = _addItemController.text.trim();
     if (description.isNotEmpty) {
-      ref.read(appDataProvider.notifier).addTodoItem(
+      ref.read(dataProvider.notifier).addTodoItem(
             widget.listId,
             description,
           );

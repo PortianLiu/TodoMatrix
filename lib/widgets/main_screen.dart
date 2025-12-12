@@ -6,8 +6,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:window_manager/window_manager.dart';
 
-import '../providers/todo_provider.dart';
-import '../providers/layout_provider.dart';
+import '../providers/data_provider.dart';
+import '../providers/sync_provider.dart';
 import '../services/window_service.dart';
 import 'settings_panel.dart';
 import 'todo_list_widget.dart';
@@ -32,7 +32,7 @@ class _MainScreenState extends ConsumerState<MainScreen> {
   }
 
   Future<void> _loadData() async {
-    await ref.read(appDataProvider.notifier).loadData();
+    await ref.read(dataProvider.notifier).loadData();
     if (mounted) {
       setState(() => _isLoading = false);
       // 应用保存的窗口设置（仅 Windows）
@@ -44,7 +44,7 @@ class _MainScreenState extends ConsumerState<MainScreen> {
   Future<void> _applyWindowSettings() async {
     if (kIsWeb || !Platform.isWindows) return;
 
-    final settings = ref.read(appSettingsProvider);
+    final settings = ref.read(localSettingsProvider);
     // 应用钉在桌面设置（使用保存的透明度）
     if (settings.pinToDesktop) {
       await WindowService.instance.setPinToDesktop(true, opacity: settings.pinOpacity);
@@ -117,7 +117,8 @@ class _MainScreenState extends ConsumerState<MainScreen> {
               ),
             ),
             const Spacer(),
-            // 工具栏按钮（图钉在最左边，贴边隐藏在第二位）
+            // 工具栏按钮（同步按钮在最左边）
+            _buildSyncButton(),
             _buildPinButton(),
             _buildEdgeHideButton(),
             _buildColumnsSelector(),
@@ -148,7 +149,7 @@ class _MainScreenState extends ConsumerState<MainScreen> {
       tooltip: '调整列数',
       initialValue: columns,
       onSelected: (value) {
-        ref.read(appDataProvider.notifier).setColumnsPerRow(value);
+        ref.read(dataProvider.notifier).setColumnsPerRow(value);
       },
       itemBuilder: (context) => List.generate(
         6,
@@ -239,6 +240,7 @@ class _MainScreenState extends ConsumerState<MainScreen> {
       ),
       backgroundColor: Theme.of(context).colorScheme.primaryContainer,
       actions: [
+        _buildMobileSyncButton(),
         IconButton(
           icon: const Icon(Icons.add),
           tooltip: '新建列表',
@@ -301,7 +303,7 @@ class _MainScreenState extends ConsumerState<MainScreen> {
             onAcceptWithDetails: (details) {
               final data = details.data;
               if (data['sourceListId'] != list.id) {
-                ref.read(appDataProvider.notifier).moveTodoItemToList(
+                ref.read(dataProvider.notifier).moveTodoItemToList(
                       data['sourceListId']!,
                       list.id,
                       data['itemId']!,
@@ -333,7 +335,7 @@ class _MainScreenState extends ConsumerState<MainScreen> {
 
   /// 构建钉在桌面按钮（倾斜图钉效果）
   Widget _buildPinButton() {
-    final settings = ref.watch(appSettingsProvider);
+    final settings = ref.watch(localSettingsProvider);
     final isPinned = settings.pinToDesktop;
 
     return IconButton(
@@ -354,9 +356,8 @@ class _MainScreenState extends ConsumerState<MainScreen> {
   }
 
   /// 构建贴边隐藏按钮
-  /// 构建贴边隐藏按钮
   Widget _buildEdgeHideButton() {
-    final settings = ref.watch(appSettingsProvider);
+    final settings = ref.watch(localSettingsProvider);
     final isEnabled = settings.edgeHideEnabled;
 
     return IconButton(
@@ -376,11 +377,11 @@ class _MainScreenState extends ConsumerState<MainScreen> {
 
   /// 切换贴边隐藏状态
   Future<void> _toggleEdgeHide() async {
-    final settings = ref.read(appSettingsProvider);
+    final settings = ref.read(localSettingsProvider);
     final newValue = !settings.edgeHideEnabled;
     
     // 更新设置
-    ref.read(appDataProvider.notifier).updateSettings(
+    ref.read(dataProvider.notifier).updateSettings(
       settings.copyWith(edgeHideEnabled: newValue),
     );
     
@@ -390,11 +391,11 @@ class _MainScreenState extends ConsumerState<MainScreen> {
 
   /// 切换钉在桌面状态
   Future<void> _togglePinToDesktop() async {
-    final settings = ref.read(appSettingsProvider);
+    final settings = ref.read(localSettingsProvider);
     final newValue = !settings.pinToDesktop;
     
     // 更新设置
-    ref.read(appDataProvider.notifier).updateSettings(
+    ref.read(dataProvider.notifier).updateSettings(
       settings.copyWith(pinToDesktop: newValue),
     );
     
@@ -403,7 +404,7 @@ class _MainScreenState extends ConsumerState<MainScreen> {
   }
 
   void _createNewList() {
-    ref.read(appDataProvider.notifier).createList();
+    ref.read(dataProvider.notifier).createList();
   }
 
   void _openSettings() {
@@ -413,4 +414,108 @@ class _MainScreenState extends ConsumerState<MainScreen> {
       ),
     );
   }
+
+  /// 构建同步按钮（Windows）
+  Widget _buildSyncButton() {
+    final syncState = ref.watch(syncProvider);
+    final isDiscovering = syncState.status == SyncStatus.discovering;
+    final isSyncing = syncState.status == SyncStatus.syncing ||
+        syncState.status == SyncStatus.connecting;
+    final hasDevices = syncState.devices.isNotEmpty;
+
+    return IconButton(
+      icon: AnimatedRotation(
+        turns: isSyncing ? 1 : 0,
+        duration: Duration(milliseconds: isSyncing ? 1000 : 0),
+        child: Icon(
+          Icons.sync,
+          size: 20,
+          color: isDiscovering || isSyncing
+              ? Theme.of(context).colorScheme.primary
+              : hasDevices
+                  ? Colors.green
+                  : Theme.of(context).colorScheme.onPrimaryContainer,
+        ),
+      ),
+      tooltip: _getSyncTooltip(syncState),
+      onPressed: () => _handleSyncButtonPressed(syncState),
+      visualDensity: VisualDensity.compact,
+    );
+  }
+
+  /// 构建同步按钮（移动端）
+  Widget _buildMobileSyncButton() {
+    final syncState = ref.watch(syncProvider);
+    final isDiscovering = syncState.status == SyncStatus.discovering;
+    final isSyncing = syncState.status == SyncStatus.syncing ||
+        syncState.status == SyncStatus.connecting;
+    final hasDevices = syncState.devices.isNotEmpty;
+
+    return IconButton(
+      icon: Icon(
+        Icons.sync,
+        color: isDiscovering || isSyncing
+            ? Theme.of(context).colorScheme.primary
+            : hasDevices
+                ? Colors.green
+                : null,
+      ),
+      tooltip: _getSyncTooltip(syncState),
+      onPressed: () => _handleSyncButtonPressed(syncState),
+    );
+  }
+
+  /// 获取同步按钮提示文本
+  String _getSyncTooltip(SyncState syncState) {
+    switch (syncState.status) {
+      case SyncStatus.idle:
+        return syncState.devices.isEmpty ? '发现设备' : '点击同步 (${syncState.devices.length} 个设备)';
+      case SyncStatus.discovering:
+        return '正在搜索设备...';
+      case SyncStatus.connecting:
+        return '正在连接...';
+      case SyncStatus.syncing:
+        return '正在同步...';
+      case SyncStatus.completed:
+        return '同步完成';
+      case SyncStatus.failed:
+        return '同步失败: ${syncState.message ?? "未知错误"}';
+    }
+  }
+
+  /// 处理同步按钮点击
+  Future<void> _handleSyncButtonPressed(SyncState syncState) async {
+    final syncNotifier = ref.read(syncProvider.notifier);
+    final settings = ref.read(localSettingsProvider);
+
+    debugPrint('[Sync] 按钮点击，当前状态: ${syncState.status}');
+
+    // 如果正在同步，不做任何操作
+    if (syncState.status == SyncStatus.syncing ||
+        syncState.status == SyncStatus.connecting) {
+      debugPrint('[Sync] 正在同步中，忽略点击');
+      return;
+    }
+
+    // 如果正在发现设备，停止发现
+    if (syncState.status == SyncStatus.discovering) {
+      debugPrint('[Sync] 停止设备发现');
+      await syncNotifier.stopDiscovery();
+      return;
+    }
+
+    // 如果有已发现的设备，触发同步
+    if (syncState.devices.isNotEmpty) {
+      debugPrint('[Sync] 发现 ${syncState.devices.length} 个设备，开始同步');
+      // 与第一个设备同步（后续可以改为选择设备）
+      await syncNotifier.syncWithDevice(syncState.devices.first);
+      return;
+    }
+
+    // 否则开始设备发现
+    debugPrint('[Sync] 开始设备发现，设备名: ${settings.deviceName}');
+    await syncNotifier.initialize(settings.deviceName);
+    await syncNotifier.startDiscovery();
+  }
 }
+

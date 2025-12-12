@@ -47,30 +47,38 @@ class SyncStorageService {
 
   /// 获取数据根目录
   Future<Directory> _getDataDirectory() async {
-    if (customDataPath != null && customDataPath!.isNotEmpty) {
-      final dir = Directory(customDataPath!);
-      if (await dir.exists()) {
-        return dir;
-      }
-    }
-
-    if (Platform.isWindows) {
-      final appData = Platform.environment['APPDATA'];
-      if (appData != null) {
-        final dir = Directory('$appData/TodoMatrix');
-        if (!await dir.exists()) {
-          await dir.create(recursive: true);
+    try {
+      if (customDataPath != null && customDataPath!.isNotEmpty) {
+        final dir = Directory(customDataPath!);
+        if (await dir.exists()) {
+          return dir;
         }
-        return dir;
       }
-    }
 
-    final docDir = await getApplicationDocumentsDirectory();
-    final dir = Directory('${docDir.path}/TodoMatrix');
-    if (!await dir.exists()) {
-      await dir.create(recursive: true);
+      if (Platform.isWindows) {
+        final appData = Platform.environment['APPDATA'];
+        if (appData != null) {
+          final dir = Directory('$appData/TodoMatrix');
+          if (!await dir.exists()) {
+            await dir.create(recursive: true);
+          }
+          return dir;
+        }
+      }
+
+      // Android/iOS/其他平台
+      final docDir = await getApplicationDocumentsDirectory();
+      debugPrint('[SyncStorage] 文档目录: ${docDir.path}');
+      final dir = Directory('${docDir.path}/TodoMatrix');
+      if (!await dir.exists()) {
+        await dir.create(recursive: true);
+        debugPrint('[SyncStorage] 创建数据目录: ${dir.path}');
+      }
+      return dir;
+    } catch (e) {
+      debugPrint('[SyncStorage] 获取数据目录失败: $e');
+      rethrow;
     }
-    return dir;
   }
 
   /// 获取同步数据目录

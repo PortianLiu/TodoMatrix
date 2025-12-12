@@ -41,10 +41,12 @@ class SettingsPanel extends ConsumerWidget {
           _buildThemeColorTile(context, ref, settings.themeColor),
           const Divider(),
 
-          // 布局设置
+          // 布局设置（列数和高度仅 Windows 显示，列表排序所有平台显示）
           _buildSectionHeader(context, '布局'),
-          _buildColumnsTile(context, ref, settings.columnsPerRow),
-          _buildListHeightTile(context, ref, settings.listHeight),
+          if (isWindows) ...[
+            _buildColumnsTile(context, ref, settings.columnsPerRow),
+            _buildListHeightTile(context, ref, settings.listHeight),
+          ],
           _buildListOrderTile(context, ref),
           const Divider(),
 

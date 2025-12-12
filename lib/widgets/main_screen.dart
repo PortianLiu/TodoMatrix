@@ -283,46 +283,55 @@ class _MainScreenState extends ConsumerState<MainScreen> {
     
     return Padding(
       padding: const EdgeInsets.all(12),
-      child: GridView.builder(
-        gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-          crossAxisCount: columns,
-          crossAxisSpacing: 12,
-          mainAxisSpacing: 12,
-          mainAxisExtent: listHeight, // 使用设置的列表高度
+      child: ScrollConfiguration(
+        // 禁止子组件的滚动事件冒泡到父级 GridView
+        behavior: ScrollConfiguration.of(context).copyWith(
+          physics: const ClampingScrollPhysics(),
         ),
-        itemCount: lists.length,
-        itemBuilder: (context, index) {
-          final list = lists[index];
-          return DragTarget<Map<String, String>>(
-            onAcceptWithDetails: (details) {
-              final data = details.data;
-              if (data['sourceListId'] != list.id) {
-                ref.read(dataProvider.notifier).moveTodoItemToList(
-                      data['sourceListId']!,
-                      list.id,
-                      data['itemId']!,
-                    );
-              }
-            },
-            onWillAcceptWithDetails: (details) {
-              return details.data['sourceListId'] != list.id;
-            },
-            builder: (context, candidateData, rejectedData) {
-              return Container(
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(12),
-                  border: candidateData.isNotEmpty
-                      ? Border.all(
-                          color: Theme.of(context).colorScheme.primary,
-                          width: 2,
-                        )
-                      : null,
-                ),
-                child: TodoListWidget(listId: list.id),
-              );
-            },
-          );
-        },
+        child: GridView.builder(
+          // 使用 NeverScrollableScrollPhysics 时列表内滚动不会触发整体滚动
+          // 但我们需要整体可滚动，所以用 BouncingScrollPhysics 配合子组件的滚动隔离
+          physics: const BouncingScrollPhysics(),
+          gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+            crossAxisCount: columns,
+            crossAxisSpacing: 12,
+            mainAxisSpacing: 12,
+            mainAxisExtent: listHeight,
+          ),
+          itemCount: lists.length,
+          itemBuilder: (context, index) {
+            final list = lists[index];
+            return DragTarget<Map<String, String>>(
+              onAcceptWithDetails: (details) {
+                final data = details.data;
+                if (data['sourceListId'] != list.id) {
+                  ref.read(dataProvider.notifier).moveTodoItemToList(
+                        data['sourceListId']!,
+                        list.id,
+                        data['itemId']!,
+                      );
+                }
+              },
+              onWillAcceptWithDetails: (details) {
+                return details.data['sourceListId'] != list.id;
+              },
+              builder: (context, candidateData, rejectedData) {
+                return Container(
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(12),
+                    border: candidateData.isNotEmpty
+                        ? Border.all(
+                            color: Theme.of(context).colorScheme.primary,
+                            width: 2,
+                          )
+                        : null,
+                  ),
+                  child: TodoListWidget(listId: list.id),
+                );
+              },
+            );
+          },
+        ),
       ),
     );
   }
@@ -474,6 +483,20 @@ class _MainScreenState extends ConsumerState<MainScreen> {
 
     debugPrint('[Sync] 按钮点击，当前状态: ${syncState.status}');
 
+    // 检查是否启用同步功能
+    if (!settings.syncEnabled) {
+      debugPrint('[Sync] 同步功能未启用');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('请先在设置中启用同步功能'),
+            duration: Duration(seconds: 2),
+          ),
+        );
+      }
+      return;
+    }
+
     // 如果正在同步或广播，忽略
     if (syncState.status == SyncStatus.syncing ||
         syncState.status == SyncStatus.connecting ||
@@ -554,16 +577,22 @@ class _SyncIconButtonState extends State<_SyncIconButton>
   @override
   Widget build(BuildContext context) {
     // 根据状态确定颜色
+    // 优先级：动画中 > 完成 > 失败 > 有设备在线 > 正在监听 > 默认
     Color iconColor;
     if (widget.isAnimating) {
+      // 正在广播/连接/同步时使用主题色
       iconColor = Theme.of(context).colorScheme.primary;
     } else if (widget.status == SyncStatus.completed) {
+      // 同步完成显示绿色
       iconColor = Colors.green;
     } else if (widget.status == SyncStatus.failed) {
+      // 同步失败显示红色
       iconColor = Colors.red;
     } else if (widget.hasDevices) {
+      // 有设备在线显示绿色（表示可以同步）
       iconColor = Colors.green;
     } else {
+      // 默认颜色
       iconColor = widget.compact
           ? Theme.of(context).colorScheme.onPrimaryContainer
           : Theme.of(context).colorScheme.onSurface;

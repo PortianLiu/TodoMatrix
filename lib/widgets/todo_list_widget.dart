@@ -331,11 +331,14 @@ class _TodoListWidgetState extends ConsumerState<TodoListWidget> {
     final sortedItems = [...list.items]
       ..sort((a, b) => b.sortOrder.compareTo(a.sortOrder));
 
-    return ReorderableListView.builder(
-      shrinkWrap: true,
-      buildDefaultDragHandles: false,
-      itemCount: sortedItems.length,
-      onReorder: (oldIndex, newIndex) {
+    // 使用 NotificationListener 阻止滚动事件冒泡到父级 GridView
+    return NotificationListener<ScrollNotification>(
+      onNotification: (notification) => true, // 返回 true 阻止冒泡
+      child: ReorderableListView.builder(
+        shrinkWrap: true,
+        buildDefaultDragHandles: false,
+        itemCount: sortedItems.length,
+        onReorder: (oldIndex, newIndex) {
         // 由于排序反转，需要调整索引
         final actualOldIndex = list.items.length - 1 - oldIndex;
         var actualNewIndex = list.items.length - 1 - newIndex;
@@ -346,19 +349,20 @@ class _TodoListWidgetState extends ConsumerState<TodoListWidget> {
               actualNewIndex,
             );
       },
-      itemBuilder: (context, index) {
-        final item = sortedItems[index];
-        // 使用 _MouseAwareDragWrapper 根据设备类型决定拖拽行为
-        return _MouseAwareDragWrapper(
-          key: ValueKey(item.id),
-          index: index,
-          child: TodoItemWidget(
-            listId: widget.listId,
-            item: item,
+        itemBuilder: (context, index) {
+          final item = sortedItems[index];
+          // 使用 _MouseAwareDragWrapper 根据设备类型决定拖拽行为
+          return _MouseAwareDragWrapper(
+            key: ValueKey(item.id),
             index: index,
-          ),
-        );
-      },
+            child: TodoItemWidget(
+              listId: widget.listId,
+              item: item,
+              index: index,
+            ),
+          );
+        },
+      ),
     );
   }
 

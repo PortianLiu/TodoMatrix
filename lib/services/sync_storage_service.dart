@@ -51,6 +51,7 @@ class SyncStorageService {
       if (customDataPath != null && customDataPath!.isNotEmpty) {
         final dir = Directory(customDataPath!);
         if (await dir.exists()) {
+          debugPrint('[SyncStorage] 使用自定义数据目录: ${dir.path}');
           return dir;
         }
       }
@@ -59,8 +60,10 @@ class SyncStorageService {
         final appData = Platform.environment['APPDATA'];
         if (appData != null) {
           final dir = Directory('$appData/TodoMatrix');
+          debugPrint('[SyncStorage] Windows 数据目录: ${dir.path}');
           if (!await dir.exists()) {
             await dir.create(recursive: true);
+            debugPrint('[SyncStorage] 创建 Windows 数据目录');
           }
           return dir;
         }
@@ -73,6 +76,8 @@ class SyncStorageService {
       if (!await dir.exists()) {
         await dir.create(recursive: true);
         debugPrint('[SyncStorage] 创建数据目录: ${dir.path}');
+      } else {
+        debugPrint('[SyncStorage] 数据目录已存在: ${dir.path}');
       }
       return dir;
     } catch (e) {
@@ -292,8 +297,19 @@ class SyncStorageService {
     final root = await _getDataDirectory();
     final legacyFile = File('${root.path}/data.json');
 
+    debugPrint('[SyncStorage] 检查旧版数据文件: ${legacyFile.path}');
+    
     if (!await legacyFile.exists()) {
-      debugPrint('[SyncStorage] 无旧版数据需要迁移');
+      debugPrint('[SyncStorage] 旧版数据文件不存在，无需迁移');
+      // 检查新版数据是否存在
+      final syncDir = Directory('${root.path}/$_syncDataDir');
+      final manifestFile = File('${syncDir.path}/$_manifestFileName');
+      debugPrint('[SyncStorage] 检查新版清单文件: ${manifestFile.path}');
+      if (await manifestFile.exists()) {
+        debugPrint('[SyncStorage] 新版清单文件已存在');
+      } else {
+        debugPrint('[SyncStorage] 新版清单文件也不存在，这是全新安装');
+      }
       return false;
     }
 

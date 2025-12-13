@@ -127,11 +127,7 @@ class SyncNotifier extends StateNotifier<SyncState> {
     // 设置数据变更回调（用于触发同步）
     _ref.read(dataProvider.notifier).onDataChanged = onDataChanged;
 
-    // 设备连接回调（被动方也能知道对方存在）
-    _syncService!.onDeviceConnected = (deviceId, deviceName, address) {
-      debugPrint('[SyncProvider] 被动连接，添加设备: $deviceName');
-      _discoveryService?.addDevice(deviceId, deviceName, address);
-    };
+    // 注意：被动连接时不再自动添加设备，设备发现通过 UDP 广播完成
   }
 
   /// 开始监听（应用启动时调用）

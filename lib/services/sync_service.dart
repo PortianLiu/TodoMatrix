@@ -2,7 +2,10 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:flutter/foundation.dart';
+
 import '../models/models.dart';
+import '../models/sync_manifest.dart';
 import 'discovery_service.dart';
 
 /// 同步事件类型
@@ -32,20 +35,29 @@ class SyncEvent {
 
 /// 同步结果
 class SyncResult {
-  final int added;
-  final int updated;
-  final int deleted;
+  final int listsAdded;
+  final int listsUpdated;
+  final int itemsAdded;
+  final int itemsUpdated;
   final DateTime syncTime;
 
   SyncResult({
-    required this.added,
-    required this.updated,
-    required this.deleted,
+    required this.listsAdded,
+    required this.listsUpdated,
+    required this.itemsAdded,
+    required this.itemsUpdated,
     required this.syncTime,
   });
 
   @override
-  String toString() => '新增: $added, 更新: $updated, 删除: $deleted';
+  String toString() {
+    final parts = <String>[];
+    if (listsAdded > 0) parts.add('新增 $listsAdded 个列表');
+    if (listsUpdated > 0) parts.add('更新 $listsUpdated 个列表');
+    if (itemsAdded > 0) parts.add('新增 $itemsAdded 个待办');
+    if (itemsUpdated > 0) parts.add('更新 $itemsUpdated 个待办');
+    return parts.isEmpty ? '数据已是最新' : parts.join(', ');
+  }
 }
 
 /// 冲突项
@@ -63,6 +75,35 @@ class ConflictItem {
   });
 }
 
+/// 同步数据包（用于网络传输）
+class SyncDataPacket {
+  final String deviceId;
+  final SyncManifest manifest;
+  final List<TodoList> lists;
+
+  SyncDataPacket({
+    required this.deviceId,
+    required this.manifest,
+    required this.lists,
+  });
+
+  Map<String, dynamic> toJson() => {
+    'type': 'sync_data',
+    'deviceId': deviceId,
+    'manifest': manifest.toJson(),
+    'lists': lists.map((l) => l.toJson()).toList(),
+  };
+
+  factory SyncDataPacket.fromJson(Map<String, dynamic> json) {
+    return SyncDataPacket(
+      deviceId: json['deviceId'] as String,
+      manifest: SyncManifest.fromJson(json['manifest'] as Map<String, dynamic>),
+      lists: (json['lists'] as List<dynamic>)
+          .map((e) => TodoList.fromJson(e as Map<String, dynamic>))
+          .toList(),
+    );
+  }
+}
 
 /// 冲突解决方式
 enum ConflictResolution {
@@ -71,12 +112,39 @@ enum ConflictResolution {
   keepBoth,
 }
 
+/// 合并数据结果（内部使用）
+class _MergeResult {
+  final SyncManifest manifest;
+  final List<TodoList> lists;
+  final SyncResult result;
+
+  _MergeResult({
+    required this.manifest,
+    required this.lists,
+    required this.result,
+  });
+}
+
+/// 列表合并结果（内部使用）
+class _ListMergeResult {
+  final TodoList list;
+  final int itemsAdded;
+  final int itemsUpdated;
+
+  _ListMergeResult({
+    required this.list,
+    required this.itemsAdded,
+    required this.itemsUpdated,
+  });
+}
+
 /// 同步服务
 /// 使用 TCP 连接进行数据同步
 class SyncService {
   static const int syncPort = 45679;
   static const Duration connectionTimeout = Duration(seconds: 10);
 
+  // ignore: unused_field
   final String _deviceId;
   ServerSocket? _server;
   Socket? _activeConnection;
@@ -86,11 +154,11 @@ class SyncService {
   /// 同步事件流
   Stream<SyncEvent> get syncEvents => _eventController.stream;
 
-  /// 本地数据获取回调
-  AppData Function()? getLocalData;
+  /// 获取本地同步数据的回调
+  SyncDataPacket Function()? getLocalSyncData;
 
-  /// 数据更新回调
-  void Function(AppData)? onDataUpdated;
+  /// 数据更新回调（合并后的清单和列表）
+  void Function(SyncManifest manifest, List<TodoList> lists)? onDataUpdated;
 
   SyncService({required String deviceId}) : _deviceId = deviceId;
 
@@ -102,7 +170,7 @@ class SyncService {
       _server = await ServerSocket.bind(InternetAddress.anyIPv4, syncPort);
       _server!.listen(_handleIncomingConnection);
     } catch (e) {
-      print('Sync server start failed: $e');
+      debugPrint('[SyncService] 服务器启动失败: $e');
     }
   }
 
@@ -157,109 +225,85 @@ class SyncService {
 
   /// 处理同步会话
   Future<void> _handleSyncSession(Socket socket, {required bool isInitiator}) async {
-    final localData = getLocalData?.call();
-    if (localData == null) {
+    final localPacket = getLocalSyncData?.call();
+    if (localPacket == null) {
       _emitEvent(SyncEventType.failed, message: '无法获取本地数据');
       return;
     }
 
     _emitEvent(SyncEventType.exchangingData, message: '正在交换数据...');
 
-    // 发送本地数据
-    final localJson = jsonEncode({
-      'type': 'data',
-      'deviceId': _deviceId,
-      'snapshot': localData.toJson(),
-    });
-    socket.write('$localJson\n');
-    await socket.flush();
+    try {
+      // 发送本地数据
+      final localJson = jsonEncode(localPacket.toJson());
+      socket.write('$localJson\n');
+      await socket.flush();
+      debugPrint('[SyncService] 已发送本地数据，${localPacket.lists.length} 个列表');
 
-    // 接收远程数据
-    final remoteDataStr = await socket
-        .cast<List<int>>()
-        .transform(utf8.decoder)
-        .transform(const LineSplitter())
-        .first
-        .timeout(connectionTimeout);
+      // 接收远程数据
+      final remoteDataStr = await socket
+          .cast<List<int>>()
+          .transform(utf8.decoder)
+          .transform(const LineSplitter())
+          .first
+          .timeout(connectionTimeout);
 
-    final remoteMessage = jsonDecode(remoteDataStr) as Map<String, dynamic>;
-    if (remoteMessage['type'] != 'data') {
-      _emitEvent(SyncEventType.failed, message: '无效的同步数据');
-      return;
+      debugPrint('[SyncService] 收到远程数据: ${remoteDataStr.length} 字节');
+
+      final remoteMessage = jsonDecode(remoteDataStr) as Map<String, dynamic>;
+      if (remoteMessage['type'] != 'sync_data') {
+        _emitEvent(SyncEventType.failed, message: '无效的同步数据类型');
+        return;
+      }
+
+      final remotePacket = SyncDataPacket.fromJson(remoteMessage);
+      debugPrint('[SyncService] 解析远程数据成功，${remotePacket.lists.length} 个列表');
+
+      // 合并数据
+      final mergeResult = _mergeData(localPacket, remotePacket);
+      
+      // 更新本地数据
+      onDataUpdated?.call(mergeResult.manifest, mergeResult.lists);
+
+      _emitEvent(SyncEventType.completed, result: mergeResult.result);
+    } catch (e, stackTrace) {
+      debugPrint('[SyncService] 同步会话失败: $e');
+      debugPrint('[SyncService] 堆栈: $stackTrace');
+      _emitEvent(SyncEventType.failed, message: '同步失败: $e');
     }
-
-    final remoteData = AppData.fromJson(remoteMessage['snapshot'] as Map<String, dynamic>);
-
-    // 检测冲突并合并数据
-    final conflicts = _detectConflicts(localData, remoteData);
-
-    if (conflicts.isNotEmpty) {
-      _emitEvent(SyncEventType.conflictDetected, conflicts: conflicts);
-      // 简单处理：保留本地版本
-      // 实际应用中应该让用户选择
-    }
-
-    // 合并数据
-    final mergedData = _mergeData(localData, remoteData);
-    final result = _calculateSyncResult(localData, mergedData);
-
-    // 更新本地数据
-    onDataUpdated?.call(mergedData);
-
-    _emitEvent(SyncEventType.completed, result: result);
   }
 
-
-  /// 检测冲突
-  List<ConflictItem> _detectConflicts(AppData local, AppData remote) {
-    final conflicts = <ConflictItem>[];
-
-    // 构建本地项目映射
-    final localItems = <String, (String, TodoItem)>{};
-    for (final list in local.lists) {
-      for (final item in list.items) {
-        localItems[item.id] = (list.id, item);
-      }
-    }
-
-    // 检查远程项目
-    for (final remoteList in remote.lists) {
-      for (final remoteItem in remoteList.items) {
-        final localEntry = localItems[remoteItem.id];
-        if (localEntry != null) {
-          final (listId, localItem) = localEntry;
-          // 如果两边都有修改且内容不同，则为冲突
-          if (localItem.updatedAt != remoteItem.updatedAt &&
-              localItem.description != remoteItem.description) {
-            conflicts.add(ConflictItem(
-              itemId: remoteItem.id,
-              listId: listId,
-              localItem: localItem,
-              remoteItem: remoteItem,
-            ));
-          }
-        }
-      }
-    }
-
-    return conflicts;
-  }
 
   /// 合并数据（简单策略：以最新修改时间为准）
-  AppData _mergeData(AppData local, AppData remote) {
+  _MergeResult _mergeData(SyncDataPacket local, SyncDataPacket remote) {
     final mergedLists = <TodoList>[];
     final processedListIds = <String>{};
+    
+    // 统计变更
+    int listsAdded = 0;
+    int listsUpdated = 0;
+    int itemsAdded = 0;
+    int itemsUpdated = 0;
+
+    // 构建远程列表映射
+    final remoteListMap = {for (var l in remote.lists) l.id: l};
 
     // 处理本地列表
     for (final localList in local.lists) {
-      final remoteList = remote.lists.where((l) => l.id == localList.id).firstOrNull;
+      final remoteList = remoteListMap[localList.id];
 
       if (remoteList == null) {
         // 仅本地存在
         mergedLists.add(localList);
       } else {
         // 两边都存在，合并
-        mergedLists.add(_mergeList(localList, remoteList));
+        final mergeListResult = _mergeList(localList, remoteList);
+        mergedLists.add(mergeListResult.list);
+        if (mergeListResult.itemsAdded > 0 || mergeListResult.itemsUpdated > 0) {
+          listsUpdated++;
+        }
+        itemsAdded += mergeListResult.itemsAdded;
+        itemsUpdated += mergeListResult.itemsUpdated;
       }
       processedListIds.add(localList.id);
     }
@@ -268,45 +312,91 @@ class SyncService {
     for (final remoteList in remote.lists) {
       if (!processedListIds.contains(remoteList.id)) {
         mergedLists.add(remoteList);
+        listsAdded++;
+        itemsAdded += remoteList.items.length;
       }
     }
 
-    // 更新 listOrder
+    // 合并 listOrder
     final mergedListOrder = <String>[];
-    for (final id in local.layout.listOrder) {
+    // 先添加本地顺序中存在的
+    for (final id in local.manifest.listOrder) {
       if (mergedLists.any((l) => l.id == id)) {
         mergedListOrder.add(id);
       }
     }
+    // 再添加远程新增的（按远程顺序）
+    for (final id in remote.manifest.listOrder) {
+      if (!mergedListOrder.contains(id) && mergedLists.any((l) => l.id == id)) {
+        mergedListOrder.add(id);
+      }
+    }
+    // 最后添加不在任何顺序中的
     for (final list in mergedLists) {
       if (!mergedListOrder.contains(list.id)) {
         mergedListOrder.add(list.id);
       }
     }
 
-    return local.copyWith(
-      lists: mergedLists,
-      layout: local.layout.copyWith(listOrder: mergedListOrder),
+    // 构建合并后的清单
+    final mergedMetas = mergedLists.map((list) => ListMeta(
+      id: list.id,
+      title: list.title,
+      sortOrder: mergedListOrder.indexOf(list.id),
+      updatedAt: list.updatedAt,
+      backgroundColor: list.backgroundColor,
+    )).toList();
+
+    final mergedManifest = SyncManifest(
+      version: local.manifest.version,
+      lists: mergedMetas,
+      listOrder: mergedListOrder,
       lastModified: DateTime.now(),
+    );
+
+    return _MergeResult(
+      manifest: mergedManifest,
+      lists: mergedLists,
+      result: SyncResult(
+        listsAdded: listsAdded,
+        listsUpdated: listsUpdated,
+        itemsAdded: itemsAdded,
+        itemsUpdated: itemsUpdated,
+        syncTime: DateTime.now(),
+      ),
     );
   }
 
   /// 合并单个列表
-  TodoList _mergeList(TodoList local, TodoList remote) {
+  _ListMergeResult _mergeList(TodoList local, TodoList remote) {
     final mergedItems = <TodoItem>[];
     final processedItemIds = <String>{};
+    int itemsAdded = 0;
+    int itemsUpdated = 0;
+
+    // 构建远程项目映射
+    final remoteItemMap = {for (var i in remote.items) i.id: i};
 
     // 处理本地项目
     for (final localItem in local.items) {
-      final remoteItem = remote.items.where((i) => i.id == localItem.id).firstOrNull;
+      final remoteItem = remoteItemMap[localItem.id];
 
       if (remoteItem == null) {
+        // 仅本地存在
         mergedItems.add(localItem);
       } else {
-        // 保留最新的
-        mergedItems.add(
-          localItem.updatedAt.isAfter(remoteItem.updatedAt) ? localItem : remoteItem,
-        );
+        // 两边都存在，保留最新的
+        if (remoteItem.updatedAt.isAfter(localItem.updatedAt)) {
+          mergedItems.add(remoteItem);
+          // 检查是否有实际变更
+          if (localItem.description != remoteItem.description ||
+              localItem.isCompleted != remoteItem.isCompleted ||
+              localItem.priority != remoteItem.priority) {
+            itemsUpdated++;
+          }
+        } else {
+          mergedItems.add(localItem);
+        }
       }
       processedItemIds.add(localItem.id);
     }
@@ -315,45 +405,25 @@ class SyncService {
     for (final remoteItem in remote.items) {
       if (!processedItemIds.contains(remoteItem.id)) {
         mergedItems.add(remoteItem);
+        itemsAdded++;
       }
     }
 
     // 按 sortOrder 排序
     mergedItems.sort((a, b) => a.sortOrder.compareTo(b.sortOrder));
 
-    return local.copyWith(
-      items: mergedItems,
-      title: local.updatedAt.isAfter(remote.updatedAt) ? local.title : remote.title,
-      updatedAt: DateTime.now(),
-    );
-  }
+    // 列表属性取最新的
+    final useRemoteProps = remote.updatedAt.isAfter(local.updatedAt);
 
-  /// 计算同步结果
-  SyncResult _calculateSyncResult(AppData before, AppData after) {
-    final beforeItemIds = <String>{};
-    final afterItemIds = <String>{};
-
-    for (final list in before.lists) {
-      for (final item in list.items) {
-        beforeItemIds.add(item.id);
-      }
-    }
-
-    for (final list in after.lists) {
-      for (final item in list.items) {
-        afterItemIds.add(item.id);
-      }
-    }
-
-    final added = afterItemIds.difference(beforeItemIds).length;
-    final deleted = beforeItemIds.difference(afterItemIds).length;
-    final updated = afterItemIds.intersection(beforeItemIds).length;
-
-    return SyncResult(
-      added: added,
-      updated: updated,
-      deleted: deleted,
-      syncTime: DateTime.now(),
+    return _ListMergeResult(
+      list: local.copyWith(
+        items: mergedItems,
+        title: useRemoteProps ? remote.title : local.title,
+        backgroundColor: useRemoteProps ? remote.backgroundColor : local.backgroundColor,
+        updatedAt: DateTime.now(),
+      ),
+      itemsAdded: itemsAdded,
+      itemsUpdated: itemsUpdated,
     );
   }
 

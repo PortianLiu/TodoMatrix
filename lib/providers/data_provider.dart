@@ -502,6 +502,26 @@ class DataNotifier extends StateNotifier<AppDataState> {
   void updateSettings(LocalSettings newSettings) {
     _updateSettings(newSettings);
   }
+
+  /// 应用同步后的数据（由 SyncProvider 调用）
+  void applySyncedData(SyncManifest manifest, List<TodoList> lists) {
+    debugPrint('[DataNotifier] 应用同步数据: ${lists.length} 个列表');
+    
+    final newLists = {for (var l in lists) l.id: l};
+    
+    state = state.copyWith(
+      manifest: manifest,
+      lists: newLists,
+    );
+
+    // 保存所有数据
+    _storage.triggerManifestSave(manifest);
+    for (final list in lists) {
+      _storage.triggerListSave(list);
+    }
+    
+    debugPrint('[DataNotifier] 同步数据已应用并保存');
+  }
 }
 
 

@@ -76,6 +76,9 @@ class SyncNotifier extends StateNotifier<SyncState> {
     _discoveryService = DiscoveryService(deviceName: deviceName);
     _syncService = SyncService(deviceId: settings.deviceName);
 
+    // 设置同步回调
+    _setupSyncCallbacks();
+
     // 监听设备发现
     _devicesSub = _discoveryService!.discoveredDevices.listen((devices) {
       debugPrint('[SyncProvider] 设备列表更新: ${devices.length} 个设备');
@@ -91,6 +94,29 @@ class SyncNotifier extends StateNotifier<SyncState> {
 
     // 监听同步事件
     _eventsSub = _syncService!.syncEvents.listen(_handleSyncEvent);
+  }
+
+  /// 设置同步服务的回调
+  void _setupSyncCallbacks() {
+    if (_syncService == null) return;
+
+    // 获取本地数据的回调
+    _syncService!.getLocalSyncData = () {
+      final dataState = _ref.read(dataProvider);
+      final settings = _ref.read(localSettingsProvider);
+      
+      return SyncDataPacket(
+        deviceId: settings.deviceName,
+        manifest: dataState.manifest,
+        lists: dataState.sortedLists,
+      );
+    };
+
+    // 数据更新回调
+    _syncService!.onDataUpdated = (manifest, lists) {
+      debugPrint('[SyncProvider] 收到合并后的数据，更新本地状态');
+      _ref.read(dataProvider.notifier).applySyncedData(manifest, lists);
+    };
   }
 
   /// 开始监听（应用启动时调用）

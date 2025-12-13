@@ -604,10 +604,10 @@ class _SyncIconButtonState extends State<_SyncIconButton>
         builder: (context, child) {
           return Transform(
             alignment: Alignment.center,
-            // 水平翻转图标，使旋转方向与图标箭头方向一致
+            // 水平翻转图标，并逆时针旋转（翻转后视觉上为顺时针）
             transform: Matrix4.identity()
               ..scale(-1.0, 1.0) // 水平翻转
-              ..rotateZ(_controller.value * 2 * math.pi), // 旋转
+              ..rotateZ(-_controller.value * 2 * math.pi), // 逆时针旋转
             child: Icon(
               Icons.sync,
               size: widget.iconSize,

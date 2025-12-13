@@ -863,7 +863,7 @@ class _SyncStatusIconState extends State<_SyncStatusIcon>
             alignment: Alignment.center,
             transform: Matrix4.identity()
               ..scale(-1.0, 1.0)
-              ..rotateZ(_controller.value * 2 * 3.14159),
+              ..rotateZ(-_controller.value * 2 * 3.14159), // 逆时针旋转（翻转后视觉上为顺时针）
             child: Icon(widget.icon, color: widget.color),
           );
         }

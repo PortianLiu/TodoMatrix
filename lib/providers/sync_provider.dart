@@ -228,6 +228,10 @@ class SyncNotifier extends StateNotifier<SyncState> {
           message: '同步完成',
           lastResult: event.result,
         );
+        // 同步成功后刷新所有设备的在线时间
+        for (final device in state.devices) {
+          _discoveryService?.refreshDeviceLastSeen(device.deviceId);
+        }
         // 3 秒后恢复空闲状态
         Future.delayed(const Duration(seconds: 3), () {
           if (state.status == SyncStatus.completed) {

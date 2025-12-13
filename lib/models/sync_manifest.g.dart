@@ -22,6 +22,21 @@ Map<String, dynamic> _$ListMetaToJson(ListMeta instance) => <String, dynamic>{
       'backgroundColor': instance.backgroundColor,
     };
 
+DeletedItem _$DeletedItemFromJson(Map<String, dynamic> json) => DeletedItem(
+      id: json['id'] as String,
+      deletedAt: DateTime.parse(json['deletedAt'] as String),
+      type: json['type'] as String,
+      listId: json['listId'] as String?,
+    );
+
+Map<String, dynamic> _$DeletedItemToJson(DeletedItem instance) =>
+    <String, dynamic>{
+      'id': instance.id,
+      'deletedAt': instance.deletedAt.toIso8601String(),
+      'type': instance.type,
+      'listId': instance.listId,
+    };
+
 SyncManifest _$SyncManifestFromJson(Map<String, dynamic> json) => SyncManifest(
       version: json['version'] as String? ?? '2.0',
       lists: (json['lists'] as List<dynamic>?)
@@ -33,6 +48,10 @@ SyncManifest _$SyncManifestFromJson(Map<String, dynamic> json) => SyncManifest(
               .toList() ??
           const [],
       lastModified: DateTime.parse(json['lastModified'] as String),
+      deletedItems: (json['deletedItems'] as List<dynamic>?)
+              ?.map((e) => DeletedItem.fromJson(e as Map<String, dynamic>))
+              .toList() ??
+          const [],
     );
 
 Map<String, dynamic> _$SyncManifestToJson(SyncManifest instance) =>
@@ -41,4 +60,5 @@ Map<String, dynamic> _$SyncManifestToJson(SyncManifest instance) =>
       'lists': instance.lists,
       'listOrder': instance.listOrder,
       'lastModified': instance.lastModified.toIso8601String(),
+      'deletedItems': instance.deletedItems,
     };

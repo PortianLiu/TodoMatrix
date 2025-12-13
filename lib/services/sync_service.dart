@@ -130,11 +130,13 @@ class _ListMergeResult {
   final TodoList list;
   final int itemsAdded;
   final int itemsUpdated;
+  final int itemsDeleted;
 
   _ListMergeResult({
     required this.list,
     required this.itemsAdded,
     required this.itemsUpdated,
+    this.itemsDeleted = 0,
   });
 }
 
@@ -274,7 +276,7 @@ class SyncService {
   }
 
 
-  /// 合并数据（简单策略：以最新修改时间为准）
+  /// 合并数据（以最新修改时间为准，支持删除同步）
   _MergeResult _mergeData(SyncDataPacket local, SyncDataPacket remote) {
     final mergedLists = <TodoList>[];
     final processedListIds = <String>{};
@@ -284,57 +286,112 @@ class SyncService {
     int listsUpdated = 0;
     int itemsAdded = 0;
     int itemsUpdated = 0;
+    int listsDeleted = 0;
+    int itemsDeleted = 0;
+
+    // 合并墓碑记录（已删除项目）
+    final allDeletedItems = <String, DeletedItem>{};
+    for (final item in local.manifest.deletedItems) {
+      allDeletedItems[item.id] = item;
+    }
+    for (final item in remote.manifest.deletedItems) {
+      // 如果两边都有删除记录，保留较新的
+      final existing = allDeletedItems[item.id];
+      if (existing == null || item.deletedAt.isAfter(existing.deletedAt)) {
+        allDeletedItems[item.id] = item;
+      }
+    }
+
+    // 已删除的列表 ID 集合
+    final deletedListIds = allDeletedItems.entries
+        .where((e) => e.value.type == 'list')
+        .map((e) => e.key)
+        .toSet();
+
+    // 已删除的待办项 ID 集合
+    final deletedItemIds = allDeletedItems.entries
+        .where((e) => e.value.type == 'item')
+        .map((e) => e.key)
+        .toSet();
 
     // 构建远程列表映射
     final remoteListMap = {for (var l in remote.lists) l.id: l};
 
     // 处理本地列表
     for (final localList in local.lists) {
+      // 检查是否被删除
+      if (deletedListIds.contains(localList.id)) {
+        // 检查删除时间是否晚于列表更新时间
+        final deleteRecord = allDeletedItems[localList.id]!;
+        if (deleteRecord.deletedAt.isAfter(localList.updatedAt)) {
+          listsDeleted++;
+          processedListIds.add(localList.id);
+          continue; // 跳过已删除的列表
+        }
+      }
+
       final remoteList = remoteListMap[localList.id];
 
       if (remoteList == null) {
-        // 仅本地存在
-        mergedLists.add(localList);
+        // 仅本地存在，过滤已删除的待办项
+        final filteredList = _filterDeletedItems(localList, deletedItemIds, allDeletedItems);
+        mergedLists.add(filteredList.list);
+        itemsDeleted += filteredList.itemsDeleted;
       } else {
         // 两边都存在，合并
-        final mergeListResult = _mergeList(localList, remoteList);
+        final mergeListResult = _mergeList(localList, remoteList, deletedItemIds, allDeletedItems);
         mergedLists.add(mergeListResult.list);
         if (mergeListResult.itemsAdded > 0 || mergeListResult.itemsUpdated > 0) {
           listsUpdated++;
         }
         itemsAdded += mergeListResult.itemsAdded;
         itemsUpdated += mergeListResult.itemsUpdated;
+        itemsDeleted += mergeListResult.itemsDeleted;
       }
       processedListIds.add(localList.id);
     }
 
-    // 添加仅远程存在的列表
+    // 添加仅远程存在的列表（排除已删除的）
     for (final remoteList in remote.lists) {
       if (!processedListIds.contains(remoteList.id)) {
-        mergedLists.add(remoteList);
+        // 检查是否被删除
+        if (deletedListIds.contains(remoteList.id)) {
+          final deleteRecord = allDeletedItems[remoteList.id]!;
+          if (deleteRecord.deletedAt.isAfter(remoteList.updatedAt)) {
+            continue; // 跳过已删除的列表
+          }
+        }
+        // 过滤已删除的待办项
+        final filteredList = _filterDeletedItems(remoteList, deletedItemIds, allDeletedItems);
+        mergedLists.add(filteredList.list);
         listsAdded++;
-        itemsAdded += remoteList.items.length;
+        itemsAdded += filteredList.list.items.length;
       }
     }
 
-    // 合并 listOrder
-    final mergedListOrder = <String>[];
-    // 先添加本地顺序中存在的
-    for (final id in local.manifest.listOrder) {
-      if (mergedLists.any((l) => l.id == id)) {
-        mergedListOrder.add(id);
+    // 合并 listOrder（以最新修改时间为准）
+    final List<String> mergedListOrder;
+    if (remote.manifest.lastModified.isAfter(local.manifest.lastModified)) {
+      // 远程更新，使用远程顺序
+      mergedListOrder = remote.manifest.listOrder
+          .where((id) => mergedLists.any((l) => l.id == id))
+          .toList();
+      // 添加本地新增的（不在远程顺序中的）
+      for (final list in mergedLists) {
+        if (!mergedListOrder.contains(list.id)) {
+          mergedListOrder.add(list.id);
+        }
       }
-    }
-    // 再添加远程新增的（按远程顺序）
-    for (final id in remote.manifest.listOrder) {
-      if (!mergedListOrder.contains(id) && mergedLists.any((l) => l.id == id)) {
-        mergedListOrder.add(id);
-      }
-    }
-    // 最后添加不在任何顺序中的
-    for (final list in mergedLists) {
-      if (!mergedListOrder.contains(list.id)) {
-        mergedListOrder.add(list.id);
+    } else {
+      // 本地更新或相同，使用本地顺序
+      mergedListOrder = local.manifest.listOrder
+          .where((id) => mergedLists.any((l) => l.id == id))
+          .toList();
+      // 添加远程新增的
+      for (final list in mergedLists) {
+        if (!mergedListOrder.contains(list.id)) {
+          mergedListOrder.add(list.id);
+        }
       }
     }
 
@@ -347,12 +404,22 @@ class SyncService {
       backgroundColor: list.backgroundColor,
     )).toList();
 
+    // 清理过期的墓碑记录（保留最近 30 天的）
+    final cutoffDate = DateTime.now().subtract(const Duration(days: 30));
+    final cleanedDeletedItems = allDeletedItems.values
+        .where((item) => item.deletedAt.isAfter(cutoffDate))
+        .toList();
+
     final mergedManifest = SyncManifest(
       version: local.manifest.version,
       lists: mergedMetas,
       listOrder: mergedListOrder,
       lastModified: DateTime.now(),
+      deletedItems: cleanedDeletedItems,
     );
+
+    debugPrint('[SyncService] 合并完成: 新增$listsAdded列表, 更新$listsUpdated列表, 删除$listsDeleted列表');
+    debugPrint('[SyncService] 待办项: 新增$itemsAdded, 更新$itemsUpdated, 删除$itemsDeleted');
 
     return _MergeResult(
       manifest: mergedManifest,
@@ -367,18 +434,58 @@ class SyncService {
     );
   }
 
+  /// 过滤已删除的待办项
+  ({TodoList list, int itemsDeleted}) _filterDeletedItems(
+    TodoList list,
+    Set<String> deletedItemIds,
+    Map<String, DeletedItem> deleteRecords,
+  ) {
+    int itemsDeleted = 0;
+    final filteredItems = list.items.where((item) {
+      if (deletedItemIds.contains(item.id)) {
+        final deleteRecord = deleteRecords[item.id]!;
+        if (deleteRecord.deletedAt.isAfter(item.updatedAt)) {
+          itemsDeleted++;
+          return false; // 过滤掉
+        }
+      }
+      return true;
+    }).toList();
+
+    return (
+      list: list.copyWith(items: filteredItems),
+      itemsDeleted: itemsDeleted,
+    );
+  }
+
   /// 合并单个列表
-  _ListMergeResult _mergeList(TodoList local, TodoList remote) {
+  _ListMergeResult _mergeList(
+    TodoList local,
+    TodoList remote,
+    Set<String> deletedItemIds,
+    Map<String, DeletedItem> deleteRecords,
+  ) {
     final mergedItems = <TodoItem>[];
     final processedItemIds = <String>{};
     int itemsAdded = 0;
     int itemsUpdated = 0;
+    int itemsDeleted = 0;
 
     // 构建远程项目映射
     final remoteItemMap = {for (var i in remote.items) i.id: i};
 
     // 处理本地项目
     for (final localItem in local.items) {
+      // 检查是否被删除
+      if (deletedItemIds.contains(localItem.id)) {
+        final deleteRecord = deleteRecords[localItem.id]!;
+        if (deleteRecord.deletedAt.isAfter(localItem.updatedAt)) {
+          itemsDeleted++;
+          processedItemIds.add(localItem.id);
+          continue; // 跳过已删除的项目
+        }
+      }
+
       final remoteItem = remoteItemMap[localItem.id];
 
       if (remoteItem == null) {
@@ -401,9 +508,16 @@ class SyncService {
       processedItemIds.add(localItem.id);
     }
 
-    // 添加仅远程存在的项目
+    // 添加仅远程存在的项目（排除已删除的）
     for (final remoteItem in remote.items) {
       if (!processedItemIds.contains(remoteItem.id)) {
+        // 检查是否被删除
+        if (deletedItemIds.contains(remoteItem.id)) {
+          final deleteRecord = deleteRecords[remoteItem.id]!;
+          if (deleteRecord.deletedAt.isAfter(remoteItem.updatedAt)) {
+            continue; // 跳过已删除的项目
+          }
+        }
         mergedItems.add(remoteItem);
         itemsAdded++;
       }
@@ -424,6 +538,7 @@ class SyncService {
       ),
       itemsAdded: itemsAdded,
       itemsUpdated: itemsUpdated,
+      itemsDeleted: itemsDeleted,
     );
   }
 

@@ -67,6 +67,34 @@ class ListMeta {
       Object.hash(id, title, sortOrder, updatedAt, backgroundColor);
 }
 
+/// 已删除项目的墓碑记录
+@JsonSerializable()
+class DeletedItem {
+  /// 被删除项目的 ID
+  final String id;
+
+  /// 删除时间
+  final DateTime deletedAt;
+
+  /// 类型：list 或 item
+  final String type;
+
+  /// 如果是待办项，所属列表 ID
+  final String? listId;
+
+  const DeletedItem({
+    required this.id,
+    required this.deletedAt,
+    required this.type,
+    this.listId,
+  });
+
+  factory DeletedItem.fromJson(Map<String, dynamic> json) =>
+      _$DeletedItemFromJson(json);
+
+  Map<String, dynamic> toJson() => _$DeletedItemToJson(this);
+}
+
 /// 同步数据清单
 /// 管理所有列表的元信息和顺序
 @JsonSerializable()
@@ -83,11 +111,15 @@ class SyncManifest {
   /// 最后修改时间
   final DateTime lastModified;
 
+  /// 已删除项目的墓碑记录（用于同步删除操作）
+  final List<DeletedItem> deletedItems;
+
   const SyncManifest({
     this.version = '2.0',
     this.lists = const [],
     this.listOrder = const [],
     required this.lastModified,
+    this.deletedItems = const [],
   });
 
   factory SyncManifest.empty() {
@@ -104,12 +136,14 @@ class SyncManifest {
     List<ListMeta>? lists,
     List<String>? listOrder,
     DateTime? lastModified,
+    List<DeletedItem>? deletedItems,
   }) {
     return SyncManifest(
       version: version ?? this.version,
       lists: lists ?? this.lists,
       listOrder: listOrder ?? this.listOrder,
       lastModified: lastModified ?? this.lastModified,
+      deletedItems: deletedItems ?? this.deletedItems,
     );
   }
 

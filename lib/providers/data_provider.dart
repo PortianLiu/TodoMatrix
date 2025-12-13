@@ -263,16 +263,24 @@ class DataNotifier extends StateNotifier<AppDataState> {
 
   /// 删除列表
   void deleteList(String listId) {
+    final now = DateTime.now();
     final newLists = Map<String, TodoList>.from(state.lists);
     newLists.remove(listId);
 
     final newMetas = state.manifest.lists.where((m) => m.id != listId).toList();
     final newOrder = state.manifest.listOrder.where((id) => id != listId).toList();
 
+    // 添加墓碑记录
+    final newDeletedItems = [
+      ...state.manifest.deletedItems,
+      DeletedItem(id: listId, deletedAt: now, type: 'list'),
+    ];
+
     final newManifest = state.manifest.copyWith(
       lists: newMetas,
       listOrder: newOrder,
-      lastModified: DateTime.now(),
+      lastModified: now,
+      deletedItems: newDeletedItems,
     );
 
     state = state.copyWith(lists: newLists, manifest: newManifest);
@@ -349,12 +357,20 @@ class DataNotifier extends StateNotifier<AppDataState> {
     final list = state.lists[listId];
     if (list == null) return;
 
+    final now = DateTime.now();
     final newItems = list.items.where((i) => i.id != itemId).toList();
     final updatedList = list.copyWith(
       items: newItems,
-      updatedAt: DateTime.now(),
+      updatedAt: now,
     );
     _updateList(updatedList);
+
+    // 添加墓碑记录
+    final newDeletedItems = [
+      ...state.manifest.deletedItems,
+      DeletedItem(id: itemId, deletedAt: now, type: 'item', listId: listId),
+    ];
+    _updateManifest(state.manifest.copyWith(deletedItems: newDeletedItems));
   }
 
   /// 在列表内移动待办项

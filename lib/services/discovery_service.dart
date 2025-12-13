@@ -59,8 +59,7 @@ class DiscoveryService {
   static const int discoveryPort = 45678;
   static const int syncPort = 45679;
   static const Duration broadcastInterval = Duration(seconds: 5);
-  // 设备超时时间延长到 5 分钟，因为我们不再定期广播
-  static const Duration deviceTimeout = Duration(minutes: 5);
+  // 不再使用超时清理，设备只在连接失败时才移除
 
   final String _deviceId;
   final String _deviceName;
@@ -79,19 +78,12 @@ class DiscoveryService {
   /// 当前发现的设备列表
   List<DeviceInfo> get devices => _discoveredDevices.values.toList();
 
-  /// 刷新设备的最后在线时间（同步成功后调用）
-  void refreshDeviceLastSeen(String deviceId) {
-    final device = _discoveredDevices[deviceId];
+  /// 移除设备（连接失败时调用）
+  void removeDevice(String deviceId) {
+    final device = _discoveredDevices.remove(deviceId);
     if (device != null) {
-      _discoveredDevices[deviceId] = DeviceInfo(
-        deviceId: device.deviceId,
-        deviceName: device.deviceName,
-        version: device.version,
-        address: device.address,
-        port: device.port,
-        lastSeen: DateTime.now(),
-      );
-      debugPrint('[Discovery] 刷新设备在线时间: ${device.deviceName}');
+      debugPrint('[Discovery] 移除设备: ${device.deviceName}');
+      _notifyDevicesChanged();
     }
   }
 
@@ -145,10 +137,7 @@ class DiscoveryService {
       debugPrint('[Discovery] 开始监听 UDP 数据包...');
 
       // 注意：不再自动定期广播，广播仅在用户点击同步按钮时触发
-      // _broadcastTimer 已移除
-
-      // 开始定期清理过期设备
-      _cleanupTimer = Timer.periodic(deviceTimeout, (_) => _cleanupExpiredDevices());
+      // 也不再定期清理设备，设备只在连接失败时才移除
       
       debugPrint('[Discovery] ========== 设备发现服务启动完成（仅监听模式）==========');
     } catch (e, stackTrace) {
@@ -304,27 +293,7 @@ class DiscoveryService {
     }
   }
 
-  /// 清理过期设备
-  void _cleanupExpiredDevices() {
-    final now = DateTime.now();
-    final expiredIds = <String>[];
 
-    for (final entry in _discoveredDevices.entries) {
-      final age = now.difference(entry.value.lastSeen);
-      if (age > deviceTimeout) {
-        expiredIds.add(entry.key);
-        debugPrint('[Discovery] 设备超时: ${entry.value.deviceName} (${age.inSeconds}秒未响应)');
-      }
-    }
-
-    if (expiredIds.isNotEmpty) {
-      for (final id in expiredIds) {
-        _discoveredDevices.remove(id);
-      }
-      _notifyDevicesChanged();
-      debugPrint('[Discovery] 清理了 ${expiredIds.length} 个过期设备，剩余 ${_discoveredDevices.length} 个');
-    }
-  }
 
   /// 通知设备列表变化
   void _notifyDevicesChanged() {

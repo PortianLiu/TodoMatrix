@@ -25,9 +25,6 @@ class DeviceInfo {
     this.userUid = '',
   });
 
-  /// 用户 UID（用于多用户隔离）
-  final String userUid;
-
   factory DeviceInfo.fromJson(Map<String, dynamic> json, InternetAddress address) {
     return DeviceInfo(
       deviceId: json['deviceId'] as String,
@@ -210,9 +207,6 @@ class DiscoveryService {
     
     _broadcastTimer?.cancel();
     _broadcastTimer = null;
-
-    _cleanupTimer?.cancel();
-    _cleanupTimer = null;
 
     _socket?.close();
     _socket = null;

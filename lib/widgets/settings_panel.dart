@@ -273,11 +273,23 @@ class SettingsPanel extends ConsumerWidget {
       title: const Text('启用局域网同步'),
       subtitle: Text(syncEnabled ? '已启用' : '已禁用'),
       value: syncEnabled,
-      onChanged: (value) {
+      onChanged: (value) async {
         final currentSettings = ref.read(localSettingsProvider);
         ref.read(dataProvider.notifier).updateSettings(
               currentSettings.copyWith(syncEnabled: value),
             );
+        
+        // 开启同步时，立即初始化并启动监听服务
+        if (value) {
+          final syncNotifier = ref.read(syncProvider.notifier);
+          await syncNotifier.initialize(currentSettings.deviceName);
+          await syncNotifier.startListening();
+          // 启动后发起一次广播
+          await syncNotifier.broadcastOnly();
+        } else {
+          // 关闭同步时，停止监听服务
+          await ref.read(syncProvider.notifier).stopListening();
+        }
       },
     );
   }

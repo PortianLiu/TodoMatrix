@@ -250,6 +250,51 @@ class DiscoveryService {
     }
   }
 
+  /// 回复广播（带 isReply 标记，避免广播风暴）
+  Future<void> _broadcastReply() async {
+    if (_socket == null) return;
+
+    final message = {
+      'type': 'discovery',
+      'deviceId': _deviceId,
+      'deviceName': _deviceName,
+      'version': _version,
+      'port': syncPort,
+      'userUid': _userUid,
+      'timestamp': DateTime.now().toIso8601String(),
+      'isReply': true,  // 标记为回复消息
+    };
+
+    final data = utf8.encode(jsonEncode(message));
+
+    try {
+      final interfaces = await NetworkInterface.list(type: InternetAddressType.IPv4);
+      
+      for (final interface in interfaces) {
+        final name = interface.name.toLowerCase();
+        if (name.contains('loopback') || 
+            name.contains('vmware') || 
+            name.contains('virtualbox') ||
+            name.contains('vbox') ||
+            name.contains('docker')) {
+          continue;
+        }
+        
+        for (final addr in interface.addresses) {
+          final parts = addr.address.split('.');
+          if (parts.length == 4) {
+            final broadcastAddr = '${parts[0]}.${parts[1]}.${parts[2]}.255';
+            _socket!.send(data, InternetAddress(broadcastAddr), discoveryPort);
+          }
+        }
+      }
+      
+      _socket!.send(data, InternetAddress('255.255.255.255'), discoveryPort);
+    } catch (e) {
+      debugPrint('[Discovery] 回复广播失败: $e');
+    }
+  }
+
   /// 处理接收到的数据报
   void _handleDatagram(RawSocketEvent event) {
     debugPrint('[Discovery] 收到 Socket 事件: $event');
@@ -308,12 +353,21 @@ class DiscoveryService {
       final isNew = !_discoveredDevices.containsKey(uniqueKey);
       _discoveredDevices[uniqueKey] = device;
       
+      // 检查是否是回复消息（避免广播风暴）
+      final isReply = message['isReply'] == true;
+      
       if (isNew) {
         debugPrint('[Discovery] 新设备已添加到列表，当前设备数: ${_discoveredDevices.length}');
-        // 发现新设备时，回复一次广播让对方也能发现自己
-        broadcastPresence();
       } else {
         debugPrint('[Discovery] 已知设备，更新信息');
+      }
+      
+      // 如果不是回复消息，则回复一次（让对方也能发现自己）
+      if (!isReply) {
+        debugPrint('[Discovery] 回复广播给 $deviceName');
+        Future.delayed(const Duration(milliseconds: 100), () {
+          _broadcastReply();
+        });
       }
       
       _notifyDevicesChanged();

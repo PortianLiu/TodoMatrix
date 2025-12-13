@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:math';
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/foundation.dart';
@@ -291,12 +292,21 @@ class SettingsPanel extends ConsumerWidget {
     );
   }
 
+  /// 生成唯一 UID（时间戳36进制 + 4位随机字符）
+  String _generateUid() {
+    final timestamp = DateTime.now().millisecondsSinceEpoch.toRadixString(36).toUpperCase();
+    final random = Random();
+    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+    final randomPart = List.generate(4, (_) => chars[random.nextInt(chars.length)]).join();
+    return '$timestamp$randomPart';
+  }
+
   /// 构建用户 UID 设置项
   Widget _buildUserUidTile(BuildContext context, WidgetRef ref, String userUid) {
     return ListTile(
       leading: const Icon(Icons.fingerprint),
       title: const Text('用户标识 (UID)'),
-      subtitle: Text(userUid.isEmpty ? '未设置（点击生成或输入）' : userUid),
+      subtitle: Text(userUid.isEmpty ? '未设置（点击生成）' : userUid),
       trailing: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
@@ -304,12 +314,12 @@ class SettingsPanel extends ConsumerWidget {
             IconButton(
               icon: const Icon(Icons.copy, size: 20),
               tooltip: '复制 UID',
-              onPressed: () {
-                // 复制到剪贴板
-                _copyToClipboard(context, userUid);
-              },
+              onPressed: () => _copyToClipboard(context, userUid),
             ),
-          const Icon(Icons.edit_outlined),
+          if (userUid.isEmpty)
+            const Icon(Icons.add_circle_outline)
+          else
+            const Icon(Icons.refresh),
         ],
       ),
       onTap: () => _showUserUidDialog(context, ref, userUid),
@@ -324,42 +334,60 @@ class SettingsPanel extends ConsumerWidget {
     );
   }
 
-  /// 显示用户 UID 编辑对话框
+  /// 显示用户 UID 对话框
   void _showUserUidDialog(BuildContext context, WidgetRef ref, String currentUid) {
-    final controller = TextEditingController(text: currentUid);
+    if (currentUid.isEmpty) {
+      // 首次生成
+      _showGenerateUidDialog(context, ref);
+    } else {
+      // 已有 UID，显示选项
+      _showUidOptionsDialog(context, ref, currentUid);
+    }
+  }
 
+  /// 显示生成 UID 对话框
+  void _showGenerateUidDialog(BuildContext context, WidgetRef ref) {
+    final newUid = _generateUid();
+    
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('用户标识 (UID)'),
+        title: const Text('生成用户标识'),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             const Text(
-              '相同 UID 的设备可以互相同步数据。\n'
-              '你可以手动输入一个 UID，或点击生成按钮创建一个随机 UID。',
-              style: TextStyle(fontSize: 12, color: Colors.grey),
+              '用户标识 (UID) 用于识别你的设备组。\n'
+              '相同 UID 的设备可以互相同步数据。\n\n'
+              '请将此 UID 复制到你的其他设备上，以便它们能够互相同步。',
+              style: TextStyle(fontSize: 13),
             ),
             const SizedBox(height: 16),
-            TextField(
-              controller: controller,
-              decoration: const InputDecoration(
-                hintText: '输入或生成 UID',
-                border: OutlineInputBorder(),
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Theme.of(context).colorScheme.primaryContainer,
+                borderRadius: BorderRadius.circular(8),
               ),
-            ),
-            const SizedBox(height: 8),
-            Align(
-              alignment: Alignment.centerRight,
-              child: TextButton.icon(
-                icon: const Icon(Icons.refresh, size: 18),
-                label: const Text('生成随机 UID'),
-                onPressed: () {
-                  // 生成 6 位随机字符串
-                  final random = DateTime.now().millisecondsSinceEpoch.toRadixString(36).substring(0, 6).toUpperCase();
-                  controller.text = random;
-                },
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      newUid,
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                        fontFamily: 'monospace',
+                        color: Theme.of(context).colorScheme.onPrimaryContainer,
+                      ),
+                    ),
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.copy),
+                    onPressed: () => _copyToClipboard(context, newUid),
+                  ),
+                ],
               ),
             ),
           ],
@@ -369,15 +397,126 @@ class SettingsPanel extends ConsumerWidget {
             onPressed: () => Navigator.of(context).pop(),
             child: const Text('取消'),
           ),
-          TextButton(
+          FilledButton(
             onPressed: () {
-              final newUid = controller.text.trim().toUpperCase();
               final currentSettings = ref.read(localSettingsProvider);
               ref.read(dataProvider.notifier).updateSettings(
                     currentSettings.copyWith(userUid: newUid),
                   );
-              // 更新发现服务的 UID
               ref.read(syncProvider.notifier).updateUserSettings(newUid, currentSettings.trustedDevices);
+              Navigator.of(context).pop();
+            },
+            child: const Text('使用此 UID'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// 显示 UID 选项对话框（已有 UID 时）
+  void _showUidOptionsDialog(BuildContext context, WidgetRef ref, String currentUid) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('用户标识'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text('当前 UID：'),
+            const SizedBox(height: 8),
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Theme.of(context).colorScheme.surfaceContainerHighest,
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      currentUid,
+                      style: const TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                        fontFamily: 'monospace',
+                      ),
+                    ),
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.copy, size: 20),
+                    onPressed: () => _copyToClipboard(context, currentUid),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 16),
+            const Text(
+              '你可以将此 UID 复制到其他设备，或输入其他设备的 UID。',
+              style: TextStyle(fontSize: 12, color: Colors.grey),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('关闭'),
+          ),
+          TextButton(
+            onPressed: () {
+              Navigator.of(context).pop();
+              _showInputUidDialog(context, ref, currentUid);
+            },
+            child: const Text('输入其他 UID'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// 显示输入 UID 对话框
+  void _showInputUidDialog(BuildContext context, WidgetRef ref, String currentUid) {
+    final controller = TextEditingController();
+
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('输入用户标识'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              '输入其他设备的 UID，以加入该设备组进行同步。',
+              style: TextStyle(fontSize: 13),
+            ),
+            const SizedBox(height: 16),
+            TextField(
+              controller: controller,
+              decoration: const InputDecoration(
+                hintText: '输入 UID',
+                border: OutlineInputBorder(),
+              ),
+              textCapitalization: TextCapitalization.characters,
+              autofocus: true,
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            onPressed: () {
+              final newUid = controller.text.trim().toUpperCase();
+              if (newUid.isNotEmpty) {
+                final currentSettings = ref.read(localSettingsProvider);
+                ref.read(dataProvider.notifier).updateSettings(
+                      currentSettings.copyWith(userUid: newUid),
+                    );
+                ref.read(syncProvider.notifier).updateUserSettings(newUid, currentSettings.trustedDevices);
+              }
               Navigator.of(context).pop();
             },
             child: const Text('确定'),

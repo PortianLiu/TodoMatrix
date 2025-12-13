@@ -107,7 +107,7 @@ class ThemeColors {
 /// 预设列表底色
 class ListColors {
   static const List<String> presetColors = [
-    'ffffff', // 白色（默认）
+    'ffffff', // 白色（默认/透明）
     'fff3e0', // 浅橙
     'e3f2fd', // 浅蓝
     'f3e5f5', // 浅紫

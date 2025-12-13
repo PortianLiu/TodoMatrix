@@ -16,6 +16,31 @@ Color _hexToColor(String hex) {
   return Color(int.parse(hex, radix: 16));
 }
 
+/// 获取列表背景色（适配深浅色模式）
+/// 浅色模式：直接使用原色
+/// 深色模式：将浅色转换为对应的深色版本
+Color _getListBackgroundColor(String? hex, BuildContext context) {
+  if (hex == null || hex == 'ffffff') {
+    // 白色/透明：使用卡片默认颜色
+    return Theme.of(context).cardColor;
+  }
+  
+  final isDark = Theme.of(context).brightness == Brightness.dark;
+  final baseColor = _hexToColor(hex);
+  
+  if (isDark) {
+    // 深色模式：降低亮度，保持色相
+    // 将浅色（如 fff3e0）转换为深色版本
+    final hsl = HSLColor.fromColor(baseColor);
+    // 将亮度从浅色（~0.9）调整到深色（~0.25）
+    final darkHsl = hsl.withLightness((hsl.lightness * 0.3).clamp(0.15, 0.35));
+    return darkHsl.toColor();
+  } else {
+    // 浅色模式：直接使用原色
+    return baseColor;
+  }
+}
+
 /// 待办列表组件
 class TodoListWidget extends ConsumerStatefulWidget {
   final String listId;
@@ -65,10 +90,8 @@ class _TodoListWidgetState extends ConsumerState<TodoListWidget> {
     final list = ref.watch(todoListProvider(widget.listId));
     if (list == null) return const SizedBox.shrink();
 
-    // 获取列表底色
-    final bgColor = list.backgroundColor != null
-        ? _hexToColor(list.backgroundColor!)
-        : Theme.of(context).cardColor;
+    // 获取列表底色（适配深浅色模式）
+    final bgColor = _getListBackgroundColor(list.backgroundColor, context);
 
     return Card(
       clipBehavior: Clip.antiAlias,

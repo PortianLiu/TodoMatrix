@@ -5,6 +5,30 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:uuid/uuid.dart';
 
+/// 可信设备请求状态
+enum TrustRequestStatus {
+  none,       // 无请求
+  pending,    // 待确认（我发起的请求，等待对方确认）
+  incoming,   // 收到请求（对方发起的请求，等待我确认）
+}
+
+/// 可信设备请求
+class TrustRequest {
+  final String fromUid;     // 发起方 UID
+  final String fromName;    // 发起方设备名
+  final String toUid;       // 接收方 UID
+  final InternetAddress fromAddress;  // 发起方地址
+  final DateTime timestamp; // 请求时间
+
+  TrustRequest({
+    required this.fromUid,
+    required this.fromName,
+    required this.toUid,
+    required this.fromAddress,
+    required this.timestamp,
+  });
+}
+
 /// 设备信息
 class DeviceInfo {
   final String deviceId;    // 内部使用的临时ID（UUID，每次启动不同）
@@ -14,6 +38,7 @@ class DeviceInfo {
   final int port;           // 同步端口
   final DateTime lastSeen;  // 最后在线时间
   final String userUid;     // 用户UID（持久化，用于可信设备识别）
+  final TrustRequestStatus trustStatus;  // 可信请求状态
 
   DeviceInfo({
     required this.deviceId,
@@ -23,7 +48,22 @@ class DeviceInfo {
     required this.port,
     required this.lastSeen,
     this.userUid = '',
+    this.trustStatus = TrustRequestStatus.none,
   });
+
+  /// 复制并修改状态
+  DeviceInfo copyWith({TrustRequestStatus? trustStatus}) {
+    return DeviceInfo(
+      deviceId: deviceId,
+      deviceName: deviceName,
+      version: version,
+      address: address,
+      port: port,
+      lastSeen: lastSeen,
+      userUid: userUid,
+      trustStatus: trustStatus ?? this.trustStatus,
+    );
+  }
 
   factory DeviceInfo.fromJson(Map<String, dynamic> json, InternetAddress address) {
     return DeviceInfo(
@@ -79,9 +119,16 @@ class DiscoveryService {
 
   final Map<String, DeviceInfo> _discoveredDevices = {};
   final _devicesController = StreamController<List<DeviceInfo>>.broadcast();
+  
+  // 可信请求相关
+  final Map<String, Timer> _pendingRequestTimers = {};  // 待确认请求的超时计时器
+  final _trustRequestController = StreamController<TrustRequest>.broadcast();  // 收到的可信请求流
 
   /// 发现的设备列表流
   Stream<List<DeviceInfo>> get discoveredDevices => _devicesController.stream;
+  
+  /// 收到的可信请求流（用于显示确认弹窗）
+  Stream<TrustRequest> get trustRequests => _trustRequestController.stream;
 
   /// 当前发现的设备列表
   List<DeviceInfo> get devices => _discoveredDevices.values.toList();
@@ -94,6 +141,108 @@ class DiscoveryService {
       _notifyDevicesChanged();
     }
   }
+  
+  /// 发送可信设备请求
+  void sendTrustRequest(DeviceInfo targetDevice) {
+    if (_socket == null || targetDevice.userUid.isEmpty) return;
+    
+    final message = {
+      'type': 'trust_request',
+      'fromUid': _userUid,
+      'fromName': _deviceName,
+      'toUid': targetDevice.userUid,
+      'timestamp': DateTime.now().toIso8601String(),
+    };
+    
+    final data = utf8.encode(jsonEncode(message));
+    _socket!.send(data, targetDevice.address, discoveryPort);
+    debugPrint('[Discovery] 发送可信请求给 ${targetDevice.deviceName}');
+    
+    // 更新设备状态为"待确认"
+    _discoveredDevices[targetDevice.uniqueId] = targetDevice.copyWith(
+      trustStatus: TrustRequestStatus.pending,
+    );
+    _notifyDevicesChanged();
+    
+    // 设置15秒超时
+    _pendingRequestTimers[targetDevice.userUid]?.cancel();
+    _pendingRequestTimers[targetDevice.userUid] = Timer(
+      const Duration(seconds: 15),
+      () => _handleRequestTimeout(targetDevice.userUid),
+    );
+  }
+  
+  /// 处理请求超时
+  void _handleRequestTimeout(String targetUid) {
+    debugPrint('[Discovery] 可信请求超时: $targetUid');
+    _pendingRequestTimers.remove(targetUid);
+    
+    // 恢复设备状态
+    final device = _discoveredDevices[targetUid];
+    if (device != null && device.trustStatus == TrustRequestStatus.pending) {
+      _discoveredDevices[targetUid] = device.copyWith(
+        trustStatus: TrustRequestStatus.none,
+      );
+      _notifyDevicesChanged();
+    }
+  }
+  
+  /// 接受可信请求
+  void acceptTrustRequest(TrustRequest request) {
+    if (_socket == null) return;
+    
+    final message = {
+      'type': 'trust_accept',
+      'fromUid': _userUid,
+      'fromName': _deviceName,
+      'toUid': request.fromUid,
+      'timestamp': DateTime.now().toIso8601String(),
+    };
+    
+    final data = utf8.encode(jsonEncode(message));
+    _socket!.send(data, request.fromAddress, discoveryPort);
+    debugPrint('[Discovery] 接受可信请求，回复给 ${request.fromName}');
+    
+    // 更新设备状态
+    final device = _discoveredDevices[request.fromUid];
+    if (device != null) {
+      _discoveredDevices[request.fromUid] = device.copyWith(
+        trustStatus: TrustRequestStatus.none,
+      );
+      _notifyDevicesChanged();
+    }
+  }
+  
+  /// 拒绝可信请求
+  void rejectTrustRequest(TrustRequest request) {
+    if (_socket == null) return;
+    
+    final message = {
+      'type': 'trust_reject',
+      'fromUid': _userUid,
+      'toUid': request.fromUid,
+      'timestamp': DateTime.now().toIso8601String(),
+    };
+    
+    final data = utf8.encode(jsonEncode(message));
+    _socket!.send(data, request.fromAddress, discoveryPort);
+    debugPrint('[Discovery] 拒绝可信请求');
+    
+    // 更新设备状态
+    final device = _discoveredDevices[request.fromUid];
+    if (device != null) {
+      _discoveredDevices[request.fromUid] = device.copyWith(
+        trustStatus: TrustRequestStatus.none,
+      );
+      _notifyDevicesChanged();
+    }
+  }
+  
+  /// 可信请求被接受的回调
+  void Function(String acceptedUid)? onTrustAccepted;
+  
+  /// 可信请求被拒绝的回调
+  void Function(String rejectedUid)? onTrustRejected;
 
   DiscoveryService({
     String? deviceId,
@@ -300,22 +449,43 @@ class DiscoveryService {
       debugPrint('[Discovery] 原始数据: $rawData');
       
       final message = jsonDecode(rawData) as Map<String, dynamic>;
+      final messageType = message['type'] as String?;
 
-      if (message['type'] != 'discovery') {
-        debugPrint('[Discovery] 非发现消息，类型: ${message['type']}');
-        return;
+      // 根据消息类型分发处理
+      switch (messageType) {
+        case 'discovery':
+          _handleDiscoveryMessage(message, datagram);
+          break;
+        case 'trust_request':
+          _handleTrustRequest(message, datagram.address);
+          break;
+        case 'trust_accept':
+          _handleTrustAccept(message);
+          break;
+        case 'trust_reject':
+          _handleTrustReject(message);
+          break;
+        default:
+          debugPrint('[Discovery] 未知消息类型: $messageType');
       }
+    } catch (e, stackTrace) {
+      debugPrint('[Discovery] 解析数据包失败: $e');
+      debugPrint('[Discovery] 堆栈: $stackTrace');
+    }
+  }
 
-      final deviceId = message['deviceId'] as String;
-      final deviceName = message['deviceName'] as String?;
+  /// 处理设备发现消息
+  void _handleDiscoveryMessage(Map<String, dynamic> message, Datagram datagram) {
+    final deviceId = message['deviceId'] as String;
+    final deviceName = message['deviceName'] as String?;
 
-      // 忽略自己的广播
-      if (deviceId == _deviceId) {
-        debugPrint('[Discovery] 收到自己的广播，忽略');
-        return;
-      }
+    // 忽略自己的广播
+    if (deviceId == _deviceId) {
+      debugPrint('[Discovery] 收到自己的广播，忽略');
+      return;
+    }
 
-      final device = DeviceInfo.fromJson(message, datagram.address);
+    final device = DeviceInfo.fromJson(message, datagram.address);
       
       // 使用 userUid 作为唯一标识（如果有），否则使用 deviceId
       final uniqueKey = device.uniqueId;
@@ -327,37 +497,131 @@ class DiscoveryService {
       }
       
       // 发现所有设备，不做过滤（过滤在同步时进行）
-      debugPrint('[Discovery] ★★★ 发现设备: $deviceName @ $sourceAddr ★★★');
-      debugPrint('[Discovery]   对方 UID: ${device.userUid}');
-      
-      final isNew = !_discoveredDevices.containsKey(uniqueKey);
-      _discoveredDevices[uniqueKey] = device;
-      
-      // 检查是否是回复消息（避免广播风暴）
-      final isReply = message['isReply'] == true;
-      
-      if (isNew) {
-        debugPrint('[Discovery] 新设备已添加到列表，当前设备数: ${_discoveredDevices.length}');
-      } else {
-        debugPrint('[Discovery] 已知设备，更新信息');
-      }
-      
-      // 如果不是回复消息，则直接回复给发送方（而不是广播，避免跨子网问题）
-      if (!isReply) {
-        debugPrint('[Discovery] 直接回复给 $deviceName @ $sourceAddr');
-        Future.delayed(const Duration(milliseconds: 100), () {
-          _sendReplyTo(datagram.address);
-        });
-      }
-      
-      _notifyDevicesChanged();
-    } catch (e, stackTrace) {
-      debugPrint('[Discovery] 解析数据包失败: $e');
-      debugPrint('[Discovery] 堆栈: $stackTrace');
+    final sourceAddr = datagram.address.address;
+    debugPrint('[Discovery] ★★★ 发现设备: $deviceName @ $sourceAddr ★★★');
+    debugPrint('[Discovery]   对方 UID: ${device.userUid}');
+    
+    final isNew = !_discoveredDevices.containsKey(uniqueKey);
+    
+    // 保留现有的 trustStatus（如果有）
+    final existingDevice = _discoveredDevices[uniqueKey];
+    final newDevice = existingDevice != null 
+        ? device.copyWith(trustStatus: existingDevice.trustStatus)
+        : device;
+    _discoveredDevices[uniqueKey] = newDevice;
+    
+    // 检查是否是回复消息（避免广播风暴）
+    final isReply = message['isReply'] == true;
+    
+    if (isNew) {
+      debugPrint('[Discovery] 新设备已添加到列表，当前设备数: ${_discoveredDevices.length}');
+    } else {
+      debugPrint('[Discovery] 已知设备，更新信息');
     }
+    
+    // 如果不是回复消息，则直接回复给发送方（而不是广播，避免跨子网问题）
+    if (!isReply) {
+      debugPrint('[Discovery] 直接回复给 $deviceName @ $sourceAddr');
+      Future.delayed(const Duration(milliseconds: 100), () {
+        _sendReplyTo(datagram.address);
+      });
+    }
+    
+    _notifyDevicesChanged();
   }
 
+  /// 处理可信请求消息
+  void _handleTrustRequest(Map<String, dynamic> message, InternetAddress fromAddress) {
+    final fromUid = message['fromUid'] as String?;
+    final fromName = message['fromName'] as String?;
+    final toUid = message['toUid'] as String?;
+    
+    if (fromUid == null || toUid == null) return;
+    
+    // 检查是否是发给自己的
+    if (toUid != _userUid) {
+      debugPrint('[Discovery] 可信请求不是发给自己的，忽略');
+      return;
+    }
+    
+    debugPrint('[Discovery] 收到可信请求: 来自 $fromName ($fromUid)');
+    
+    // 更新设备状态为"收到请求"
+    final device = _discoveredDevices[fromUid];
+    if (device != null) {
+      _discoveredDevices[fromUid] = device.copyWith(
+        trustStatus: TrustRequestStatus.incoming,
+      );
+      _notifyDevicesChanged();
+    }
+    
+    // 发送请求到流，让 UI 显示确认弹窗
+    _trustRequestController.add(TrustRequest(
+      fromUid: fromUid,
+      fromName: fromName ?? '未知设备',
+      toUid: toUid,
+      fromAddress: fromAddress,
+      timestamp: DateTime.now(),
+    ));
+  }
 
+  /// 处理可信接受消息
+  void _handleTrustAccept(Map<String, dynamic> message) {
+    final fromUid = message['fromUid'] as String?;
+    final toUid = message['toUid'] as String?;
+    
+    if (fromUid == null || toUid == null) return;
+    
+    // 检查是否是发给自己的
+    if (toUid != _userUid) return;
+    
+    debugPrint('[Discovery] 可信请求被接受: $fromUid');
+    
+    // 取消超时计时器
+    _pendingRequestTimers[fromUid]?.cancel();
+    _pendingRequestTimers.remove(fromUid);
+    
+    // 更新设备状态
+    final device = _discoveredDevices[fromUid];
+    if (device != null) {
+      _discoveredDevices[fromUid] = device.copyWith(
+        trustStatus: TrustRequestStatus.none,
+      );
+      _notifyDevicesChanged();
+    }
+    
+    // 通知回调
+    onTrustAccepted?.call(fromUid);
+  }
+
+  /// 处理可信拒绝消息
+  void _handleTrustReject(Map<String, dynamic> message) {
+    final fromUid = message['fromUid'] as String?;
+    final toUid = message['toUid'] as String?;
+    
+    if (fromUid == null || toUid == null) return;
+    
+    // 检查是否是发给自己的
+    if (toUid != _userUid) return;
+    
+    debugPrint('[Discovery] 可信请求被拒绝: $fromUid');
+    
+    // 取消超时计时器
+    _pendingRequestTimers[fromUid]?.cancel();
+    _pendingRequestTimers.remove(fromUid);
+    
+    // 更新设备状态
+    final device = _discoveredDevices[fromUid];
+    if (device != null) {
+      _discoveredDevices[fromUid] = device.copyWith(
+        trustStatus: TrustRequestStatus.none,
+      );
+      _notifyDevicesChanged();
+    }
+    
+    // 通知回调
+    onTrustRejected?.call(fromUid);
+  }
 
   /// 通知设备列表变化
   void _notifyDevicesChanged() {
@@ -367,6 +631,11 @@ class DiscoveryService {
   /// 销毁服务
   void dispose() {
     stopDiscovery();
+    for (final timer in _pendingRequestTimers.values) {
+      timer.cancel();
+    }
+    _pendingRequestTimers.clear();
     _devicesController.close();
+    _trustRequestController.close();
   }
 }

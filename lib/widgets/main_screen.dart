@@ -8,6 +8,7 @@ import 'package:window_manager/window_manager.dart';
 
 import '../providers/data_provider.dart';
 import '../providers/sync_provider.dart';
+import '../services/discovery_service.dart';
 import '../services/window_service.dart';
 import 'settings_panel.dart';
 import 'todo_list_widget.dart';
@@ -29,7 +30,62 @@ class _MainScreenState extends ConsumerState<MainScreen> {
     // 数据已在 main.dart 中预加载，这里只需应用窗口设置
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _applyWindowSettings();
+      _setupTrustRequestListener();
     });
+  }
+  
+  /// 设置可信请求监听
+  void _setupTrustRequestListener() {
+    final trustRequests = ref.read(syncProvider.notifier).trustRequests;
+    trustRequests?.listen((request) {
+      if (mounted) {
+        _showTrustRequestDialog(request);
+      }
+    });
+  }
+  
+  /// 显示可信请求确认弹窗
+  void _showTrustRequestDialog(TrustRequest request) {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => AlertDialog(
+        title: const Text('可信设备请求'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('设备 "${request.fromName}" 请求与您建立可信连接。'),
+            const SizedBox(height: 8),
+            Text(
+              'UID: ${request.fromUid}',
+              style: const TextStyle(fontSize: 12, color: Colors.grey, fontFamily: 'monospace'),
+            ),
+            const SizedBox(height: 16),
+            const Text(
+              '接受后，双方可以同步数据。',
+              style: TextStyle(fontSize: 12, color: Colors.grey),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () {
+              ref.read(syncProvider.notifier).rejectTrustRequest(request);
+              Navigator.of(context).pop();
+            },
+            child: const Text('拒绝'),
+          ),
+          FilledButton(
+            onPressed: () {
+              ref.read(syncProvider.notifier).acceptTrustRequest(request);
+              Navigator.of(context).pop();
+            },
+            child: const Text('接受'),
+          ),
+        ],
+      ),
+    );
   }
 
   /// 应用保存的窗口设置

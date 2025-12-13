@@ -637,32 +637,166 @@ class SettingsPanel extends ConsumerWidget {
   /// 构建设备列表项
   Widget _buildDeviceListTile(BuildContext context, WidgetRef ref) {
     final devices = ref.watch(discoveredDevicesProvider);
-
-    if (devices.isEmpty) {
-      return const ListTile(
-        leading: Icon(Icons.devices_other),
-        title: Text('附近设备'),
-        subtitle: Text('未发现设备，请确保其他设备已开启同步'),
-      );
-    }
+    final settings = ref.watch(localSettingsProvider);
+    final trustedDevices = settings.trustedDevices;
 
     return ExpansionTile(
       leading: const Icon(Icons.devices_other),
       title: const Text('附近设备'),
-      subtitle: Text('发现 ${devices.length} 个设备'),
-      children: devices.map((device) => _buildDeviceItem(context, ref, device)).toList(),
+      subtitle: Text(devices.isEmpty 
+          ? '未发现设备' 
+          : '发现 ${devices.length} 个设备'),
+      initiallyExpanded: devices.isNotEmpty,
+      children: [
+        if (devices.isEmpty)
+          const ListTile(
+            contentPadding: EdgeInsets.only(left: 72, right: 16),
+            title: Text('未发现设备'),
+            subtitle: Text('请确保其他设备已开启同步，且 UID 相同'),
+          )
+        else
+          ...devices.map((device) => _buildDeviceItem(context, ref, device, trustedDevices)),
+        // 可信设备管理入口
+        ListTile(
+          contentPadding: const EdgeInsets.only(left: 72, right: 16),
+          leading: const Icon(Icons.verified_user_outlined, size: 20),
+          title: const Text('管理可信设备'),
+          subtitle: Text(trustedDevices.isEmpty 
+              ? '未添加可信设备' 
+              : '${trustedDevices.length} 个可信设备'),
+          trailing: const Icon(Icons.chevron_right),
+          onTap: () => _showTrustedDevicesDialog(context, ref),
+        ),
+      ],
     );
   }
 
   /// 构建单个设备项
-  Widget _buildDeviceItem(BuildContext context, WidgetRef ref, DeviceInfo device) {
+  Widget _buildDeviceItem(BuildContext context, WidgetRef ref, DeviceInfo device, List<String> trustedDevices) {
+    final isTrusted = trustedDevices.contains(device.deviceId);
+    final settings = ref.read(localSettingsProvider);
+    final isSameUid = settings.userUid.isNotEmpty && device.userUid == settings.userUid;
+
     return ListTile(
       contentPadding: const EdgeInsets.only(left: 72, right: 16),
-      title: Text(device.deviceName),
-      subtitle: Text(device.address.address),
-      trailing: FilledButton.tonal(
-        onPressed: () => ref.read(syncProvider.notifier).syncWithDevice(device),
-        child: const Text('同步'),
+      title: Row(
+        children: [
+          Text(device.deviceName),
+          const SizedBox(width: 8),
+          if (isTrusted)
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+              decoration: BoxDecoration(
+                color: Colors.green.withValues(alpha: 0.2),
+                borderRadius: BorderRadius.circular(4),
+              ),
+              child: const Text('可信', style: TextStyle(fontSize: 10, color: Colors.green)),
+            ),
+          if (isSameUid && !isTrusted)
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+              decoration: BoxDecoration(
+                color: Colors.blue.withValues(alpha: 0.2),
+                borderRadius: BorderRadius.circular(4),
+              ),
+              child: const Text('同组', style: TextStyle(fontSize: 10, color: Colors.blue)),
+            ),
+        ],
+      ),
+      subtitle: Text('${device.address.address} · ${device.deviceId.substring(0, 8)}...'),
+      trailing: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          // 添加/移除可信设备按钮
+          IconButton(
+            icon: Icon(
+              isTrusted ? Icons.verified_user : Icons.person_add_outlined,
+              size: 20,
+              color: isTrusted ? Colors.green : null,
+            ),
+            tooltip: isTrusted ? '移除可信' : '添加为可信设备',
+            onPressed: () => _toggleTrustedDevice(ref, device.deviceId, isTrusted),
+          ),
+          // 同步按钮
+          FilledButton.tonal(
+            onPressed: () => ref.read(syncProvider.notifier).syncWithDevice(device),
+            child: const Text('同步'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// 切换可信设备状态
+  void _toggleTrustedDevice(WidgetRef ref, String deviceId, bool currentlyTrusted) {
+    final settings = ref.read(localSettingsProvider);
+    final newTrustedDevices = List<String>.from(settings.trustedDevices);
+    
+    if (currentlyTrusted) {
+      newTrustedDevices.remove(deviceId);
+    } else {
+      newTrustedDevices.add(deviceId);
+    }
+    
+    ref.read(dataProvider.notifier).updateSettings(
+          settings.copyWith(trustedDevices: newTrustedDevices),
+        );
+    ref.read(syncProvider.notifier).updateUserSettings(settings.userUid, newTrustedDevices);
+  }
+
+  /// 显示可信设备管理对话框
+  void _showTrustedDevicesDialog(BuildContext context, WidgetRef ref) {
+    final settings = ref.watch(localSettingsProvider);
+    final trustedDevices = settings.trustedDevices;
+
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('可信设备'),
+        content: SizedBox(
+          width: 300,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                '可信设备可以绕过 UID 检查直接同步。\n'
+                '适用于无法设置相同 UID 的情况。',
+                style: TextStyle(fontSize: 12, color: Colors.grey),
+              ),
+              const SizedBox(height: 16),
+              if (trustedDevices.isEmpty)
+                const Padding(
+                  padding: EdgeInsets.all(16),
+                  child: Center(
+                    child: Text('暂无可信设备', style: TextStyle(color: Colors.grey)),
+                  ),
+                )
+              else
+                ...trustedDevices.map((deviceId) => ListTile(
+                  dense: true,
+                  title: Text(
+                    deviceId,
+                    style: const TextStyle(fontFamily: 'monospace', fontSize: 12),
+                  ),
+                  trailing: IconButton(
+                    icon: const Icon(Icons.delete_outline, size: 20),
+                    onPressed: () {
+                      _toggleTrustedDevice(ref, deviceId, true);
+                      Navigator.of(context).pop();
+                      _showTrustedDevicesDialog(context, ref);
+                    },
+                  ),
+                )),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('关闭'),
+          ),
+        ],
       ),
     );
   }

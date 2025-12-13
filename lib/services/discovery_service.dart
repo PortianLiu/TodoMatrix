@@ -7,13 +7,13 @@ import 'package:uuid/uuid.dart';
 
 /// 设备信息
 class DeviceInfo {
-  final String deviceId;
-  final String deviceName;
-  final String version;
-  final InternetAddress address;
-  final int port;
-  final DateTime lastSeen;
-  final String userUid;
+  final String deviceId;    // 内部使用的临时ID（UUID，每次启动不同）
+  final String deviceName;  // 设备名称
+  final String version;     // 版本号
+  final InternetAddress address;  // IP地址
+  final int port;           // 同步端口
+  final DateTime lastSeen;  // 最后在线时间
+  final String userUid;     // 用户UID（持久化，用于可信设备识别）
 
   DeviceInfo({
     required this.deviceId,
@@ -47,13 +47,16 @@ class DeviceInfo {
     'timestamp': DateTime.now().toIso8601String(),
   };
 
+  /// 使用 userUid 作为唯一标识（如果有），否则使用 deviceId
+  String get uniqueId => userUid.isNotEmpty ? userUid : deviceId;
+
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
-      other is DeviceInfo && deviceId == other.deviceId;
+      other is DeviceInfo && uniqueId == other.uniqueId;
 
   @override
-  int get hashCode => deviceId.hashCode;
+  int get hashCode => uniqueId.hashCode;
 }
 
 
@@ -83,38 +86,13 @@ class DiscoveryService {
   /// 当前发现的设备列表
   List<DeviceInfo> get devices => _discoveredDevices.values.toList();
 
-  /// 移除设备（连接失败时调用）
-  void removeDevice(String deviceId) {
-    final device = _discoveredDevices.remove(deviceId);
+  /// 移除设备（连接失败时调用，参数为 userUid）
+  void removeDevice(String userUid) {
+    final device = _discoveredDevices.remove(userUid);
     if (device != null) {
-      debugPrint('[Discovery] 移除设备: ${device.deviceName}');
+      debugPrint('[Discovery] 移除设备: ${device.deviceName} (UID: $userUid)');
       _notifyDevicesChanged();
     }
-  }
-
-  /// 手动添加设备（被动接收连接时调用）
-  void addDevice(String deviceId, String deviceName, InternetAddress address, {String userUid = ''}) {
-    if (deviceId == _deviceId) return; // 忽略自己
-    
-    final device = DeviceInfo(
-      deviceId: deviceId,
-      deviceName: deviceName,
-      version: _version,
-      address: address,
-      port: syncPort,
-      lastSeen: DateTime.now(),
-      userUid: userUid,
-    );
-    
-    final isNew = !_discoveredDevices.containsKey(deviceId);
-    _discoveredDevices[deviceId] = device;
-    
-    if (isNew) {
-      debugPrint('[Discovery] 手动添加设备: $deviceName @ ${address.address}');
-    } else {
-      debugPrint('[Discovery] 更新设备: $deviceName');
-    }
-    _notifyDevicesChanged();
   }
 
   DiscoveryService({
@@ -314,19 +292,28 @@ class DiscoveryService {
 
       final device = DeviceInfo.fromJson(message, datagram.address);
       
+      // 使用 userUid 作为唯一标识（如果有），否则使用 deviceId
+      final uniqueKey = device.uniqueId;
+      
+      // 忽略自己（通过 userUid 判断）
+      if (device.userUid.isNotEmpty && device.userUid == _userUid) {
+        debugPrint('[Discovery] 收到自己的广播（UID匹配），忽略');
+        return;
+      }
+      
       // 发现所有设备，不做过滤（过滤在同步时进行）
-      debugPrint('[Discovery] ★★★ 发现设备: $deviceName ($deviceId) @ $sourceAddr ★★★');
+      debugPrint('[Discovery] ★★★ 发现设备: $deviceName @ $sourceAddr ★★★');
       debugPrint('[Discovery]   对方 UID: ${device.userUid}');
       
-      final isNew = !_discoveredDevices.containsKey(deviceId);
-      _discoveredDevices[deviceId] = device;
+      final isNew = !_discoveredDevices.containsKey(uniqueKey);
+      _discoveredDevices[uniqueKey] = device;
       
       if (isNew) {
         debugPrint('[Discovery] 新设备已添加到列表，当前设备数: ${_discoveredDevices.length}');
         // 发现新设备时，回复一次广播让对方也能发现自己
         broadcastPresence();
       } else {
-        debugPrint('[Discovery] 已知设备，更新最后在线时间');
+        debugPrint('[Discovery] 已知设备，更新信息');
       }
       
       _notifyDevicesChanged();

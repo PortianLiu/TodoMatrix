@@ -74,11 +74,18 @@ class _ColorPickerDialogState extends State<ColorPickerDialog> {
     if (_isDarkMode != isDark) {
       _isDarkMode = isDark;
       // 深色模式下，显示转换后的颜色
-      if (isDark && widget.currentColor != 'ffffff') {
-        final lightColor = hexToColor(widget.currentColor);
-        final darkColor = lightToDark(lightColor);
-        _controller.text = colorToHex(darkColor);
-        _previewColor = darkColor;
+      if (isDark) {
+        if (widget.currentColor == 'ffffff') {
+          // 白色在深色模式下显示为卡片背景色
+          final cardColor = Theme.of(context).cardColor;
+          _controller.text = colorToHex(cardColor);
+          _previewColor = cardColor;
+        } else {
+          final lightColor = hexToColor(widget.currentColor);
+          final darkColor = lightToDark(lightColor);
+          _controller.text = colorToHex(darkColor);
+          _previewColor = darkColor;
+        }
       }
     }
   }

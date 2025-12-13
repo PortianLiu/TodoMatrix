@@ -88,13 +88,31 @@ class SyncNotifier extends StateNotifier<SyncState> {
     // 监听设备发现
     _devicesSub = _discoveryService!.discoveredDevices.listen((devices) {
       debugPrint('[SyncProvider] 设备列表更新: ${devices.length} 个设备');
+      
+      // 检查是否有新发现的可信设备（用于触发自动同步）
+      final settings = _ref.read(localSettingsProvider);
+      final trustedDevices = settings.trustedDevices;
+      final oldTrustedOnline = state.devices
+          .where((d) => d.userUid.isNotEmpty && trustedDevices.contains(d.userUid))
+          .map((d) => d.userUid)
+          .toSet();
+      final newTrustedOnline = devices
+          .where((d) => d.userUid.isNotEmpty && trustedDevices.contains(d.userUid))
+          .map((d) => d.userUid)
+          .toSet();
+      
+      // 找出新上线的可信设备
+      final newlyOnlineTrusted = newTrustedOnline.difference(oldTrustedOnline);
+      
       state = state.copyWith(devices: devices);
       
-      // 发现新设备时自动同步（如果不在同步中）
-      if (devices.isNotEmpty && 
+      // 只有当有新的可信设备上线时才自动同步
+      if (newlyOnlineTrusted.isNotEmpty && 
           state.status != SyncStatus.syncing && 
           state.status != SyncStatus.connecting) {
-        _autoSyncWithDevices(devices);
+        debugPrint('[SyncProvider] 发现新上线的可信设备: $newlyOnlineTrusted');
+        final newDevices = devices.where((d) => newlyOnlineTrusted.contains(d.userUid)).toList();
+        _autoSyncWithDevices(newDevices);
       }
     });
 
@@ -529,13 +547,13 @@ class SyncNotifier extends StateNotifier<SyncState> {
     }
   }
 
-  /// 启动心跳检测（定期发送广播检测设备是否在线）
+  /// 启动心跳检测（定期向已知设备发送心跳包检测是否在线）
   void _startHeartbeat() {
     _heartbeatTimer?.cancel();
     _heartbeatTimer = Timer.periodic(const Duration(minutes: 1), (_) {
-      if (state.status == SyncStatus.idle) {
-        debugPrint('[SyncProvider] 心跳检测，发送广播...');
-        _discoveryService?.broadcastPresence();
+      if (state.devices.isNotEmpty && state.status == SyncStatus.idle) {
+        debugPrint('[SyncProvider] 心跳检测...');
+        _discoveryService?.sendHeartbeat();
       }
     });
   }

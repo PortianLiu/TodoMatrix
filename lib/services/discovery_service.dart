@@ -444,6 +444,34 @@ class DiscoveryService {
     }
   }
 
+  /// 向已知设备发送心跳包检测是否在线
+  /// 返回发送心跳的设备数量
+  int sendHeartbeat() {
+    if (_socket == null || _discoveredDevices.isEmpty) return 0;
+
+    final message = {
+      'type': 'heartbeat',
+      'deviceId': _deviceId,
+      'userUid': _userUid,
+      'timestamp': DateTime.now().toIso8601String(),
+    };
+
+    final data = utf8.encode(jsonEncode(message));
+    int count = 0;
+
+    for (final device in _discoveredDevices.values) {
+      try {
+        _socket!.send(data, device.address, discoveryPort);
+        count++;
+      } catch (e) {
+        debugPrint('[Discovery] 发送心跳失败: ${device.deviceName} - $e');
+      }
+    }
+
+    debugPrint('[Discovery] 已向 $count 个设备发送心跳');
+    return count;
+  }
+
   /// 处理接收到的数据报
   void _handleDatagram(RawSocketEvent event) {
     debugPrint('[Discovery] 收到 Socket 事件: $event');
@@ -475,6 +503,12 @@ class DiscoveryService {
       switch (messageType) {
         case 'discovery':
           _handleDiscoveryMessage(message, datagram);
+          break;
+        case 'heartbeat':
+          _handleHeartbeat(message, datagram);
+          break;
+        case 'heartbeat_ack':
+          _handleHeartbeatAck(message, datagram);
           break;
         case 'trust_request':
           _handleTrustRequest(message, datagram.address);
@@ -660,6 +694,49 @@ class DiscoveryService {
     
     // 通知回调（让上层处理移除逻辑）
     onTrustRemovedByPeer?.call(fromUid);
+  }
+
+  /// 处理心跳消息（收到后回复确认）
+  void _handleHeartbeat(Map<String, dynamic> message, Datagram datagram) {
+    final fromUid = message['userUid'] as String?;
+    
+    // 忽略自己的心跳
+    if (fromUid == _userUid) return;
+    
+    // 回复心跳确认
+    final ackMessage = {
+      'type': 'heartbeat_ack',
+      'deviceId': _deviceId,
+      'userUid': _userUid,
+      'timestamp': DateTime.now().toIso8601String(),
+    };
+    
+    final data = utf8.encode(jsonEncode(ackMessage));
+    _socket?.send(data, datagram.address, discoveryPort);
+  }
+
+  /// 处理心跳确认消息（更新设备最后在线时间）
+  void _handleHeartbeatAck(Map<String, dynamic> message, Datagram datagram) {
+    final fromUid = message['userUid'] as String?;
+    
+    if (fromUid == null || fromUid == _userUid) return;
+    
+    // 更新设备最后在线时间（如果设备存在）
+    final device = _discoveredDevices[fromUid];
+    if (device != null) {
+      // 设备仍在线，更新 lastSeen（通过重新创建 DeviceInfo）
+      _discoveredDevices[fromUid] = DeviceInfo(
+        deviceId: device.deviceId,
+        deviceName: device.deviceName,
+        version: device.version,
+        address: device.address,
+        port: device.port,
+        lastSeen: DateTime.now(),
+        userUid: device.userUid,
+        trustStatus: device.trustStatus,
+      );
+      // 不通知 UI 更新，避免触发不必要的重建
+    }
   }
 
   /// 通知设备列表变化

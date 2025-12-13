@@ -250,8 +250,8 @@ class DiscoveryService {
     }
   }
 
-  /// 回复广播（带 isReply 标记，避免广播风暴）
-  Future<void> _broadcastReply() async {
+  /// 直接回复给指定地址（避免跨子网问题）
+  void _sendReplyTo(InternetAddress targetAddress) {
     if (_socket == null) return;
 
     final message = {
@@ -268,30 +268,10 @@ class DiscoveryService {
     final data = utf8.encode(jsonEncode(message));
 
     try {
-      final interfaces = await NetworkInterface.list(type: InternetAddressType.IPv4);
-      
-      for (final interface in interfaces) {
-        final name = interface.name.toLowerCase();
-        if (name.contains('loopback') || 
-            name.contains('vmware') || 
-            name.contains('virtualbox') ||
-            name.contains('vbox') ||
-            name.contains('docker')) {
-          continue;
-        }
-        
-        for (final addr in interface.addresses) {
-          final parts = addr.address.split('.');
-          if (parts.length == 4) {
-            final broadcastAddr = '${parts[0]}.${parts[1]}.${parts[2]}.255';
-            _socket!.send(data, InternetAddress(broadcastAddr), discoveryPort);
-          }
-        }
-      }
-      
-      _socket!.send(data, InternetAddress('255.255.255.255'), discoveryPort);
+      _socket!.send(data, targetAddress, discoveryPort);
+      debugPrint('[Discovery] 已发送回复到 ${targetAddress.address}:$discoveryPort');
     } catch (e) {
-      debugPrint('[Discovery] 回复广播失败: $e');
+      debugPrint('[Discovery] 发送回复失败: $e');
     }
   }
 
@@ -362,11 +342,11 @@ class DiscoveryService {
         debugPrint('[Discovery] 已知设备，更新信息');
       }
       
-      // 如果不是回复消息，则回复一次（让对方也能发现自己）
+      // 如果不是回复消息，则直接回复给发送方（而不是广播，避免跨子网问题）
       if (!isReply) {
-        debugPrint('[Discovery] 回复广播给 $deviceName');
+        debugPrint('[Discovery] 直接回复给 $deviceName @ $sourceAddr');
         Future.delayed(const Duration(milliseconds: 100), () {
-          _broadcastReply();
+          _sendReplyTo(datagram.address);
         });
       }
       

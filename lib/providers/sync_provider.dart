@@ -60,6 +60,8 @@ class SyncNotifier extends StateNotifier<SyncState> {
   StreamSubscription? _devicesSub;
   StreamSubscription? _eventsSub;
   Timer? _broadcastAnimationTimer;
+  Timer? _dataSyncDebounceTimer; // 数据变更同步防抖
+  Timer? _heartbeatTimer; // 心跳检测定时器
 
   SyncNotifier(this._ref) : super(const SyncState());
 
@@ -73,7 +75,11 @@ class SyncNotifier extends StateNotifier<SyncState> {
     debugPrint('[SyncProvider] 初始化同步服务，设备名: $deviceName');
     
     final settings = _ref.read(localSettingsProvider);
-    _discoveryService = DiscoveryService(deviceName: deviceName);
+    _discoveryService = DiscoveryService(
+      deviceName: deviceName,
+      userUid: settings.userUid,
+      trustedDevices: settings.trustedDevices,
+    );
     _syncService = SyncService(deviceId: settings.deviceName);
 
     // 设置同步回调
@@ -118,6 +124,9 @@ class SyncNotifier extends StateNotifier<SyncState> {
       _ref.read(dataProvider.notifier).applySyncedData(manifest, lists);
     };
 
+    // 设置数据变更回调（用于触发同步）
+    _ref.read(dataProvider.notifier).onDataChanged = onDataChanged;
+
     // 设备连接回调（被动方也能知道对方存在）
     _syncService!.onDeviceConnected = (deviceId, deviceName, address) {
       debugPrint('[SyncProvider] 被动连接，添加设备: $deviceName');
@@ -141,11 +150,19 @@ class SyncNotifier extends StateNotifier<SyncState> {
     await _discoveryService!.startDiscovery();
     await _syncService?.startServer();
     state = state.copyWith(isListening: true);
+    
+    // 启动心跳检测
+    _startHeartbeat();
+    
+    // 启动时自动发起一次广播和同步
+    debugPrint('[SyncProvider] 启动时自动广播...');
+    await _discoveryService!.broadcastPresence();
   }
 
   /// 停止监听
   Future<void> stopListening() async {
     debugPrint('[SyncProvider] 停止监听');
+    _stopHeartbeat();
     await _discoveryService?.stopDiscovery();
     await _syncService?.stopServer();
     state = state.copyWith(isListening: false, devices: []);
@@ -229,6 +246,7 @@ class SyncNotifier extends StateNotifier<SyncState> {
         state = state.copyWith(message: '检测到 ${event.conflicts?.length ?? 0} 个冲突');
         break;
       case SyncEventType.completed:
+        _currentSyncDevice = null;
         state = state.copyWith(
           status: SyncStatus.completed,
           message: '同步完成',
@@ -242,6 +260,15 @@ class SyncNotifier extends StateNotifier<SyncState> {
         });
         break;
       case SyncEventType.failed:
+        // 连接失败时移除设备
+        if (_currentSyncDevice != null && 
+            event.message != null && 
+            event.message!.contains('连接失败')) {
+          debugPrint('[SyncProvider] 连接失败，移除设备: ${_currentSyncDevice!.deviceName}');
+          _discoveryService?.removeDevice(_currentSyncDevice!.deviceId);
+        }
+        _currentSyncDevice = null;
+        
         state = state.copyWith(
           status: SyncStatus.failed,
           message: event.message,
@@ -256,9 +283,13 @@ class SyncNotifier extends StateNotifier<SyncState> {
     }
   }
 
+  /// 当前正在同步的设备（用于失败时移除）
+  DeviceInfo? _currentSyncDevice;
+
   /// 与指定设备同步
   Future<void> syncWithDevice(DeviceInfo device) async {
     if (_syncService == null) return;
+    _currentSyncDevice = device;
     await _syncService!.startSync(device);
   }
 
@@ -268,9 +299,61 @@ class SyncNotifier extends StateNotifier<SyncState> {
     state = state.copyWith(status: SyncStatus.idle);
   }
 
+  /// 数据变更时触发同步（带防抖）
+  void onDataChanged() {
+    // 如果同步未启用或没有设备，忽略
+    final settings = _ref.read(localSettingsProvider);
+    if (!settings.syncEnabled || state.devices.isEmpty) return;
+    
+    // 如果正在同步，忽略
+    if (state.status == SyncStatus.syncing || 
+        state.status == SyncStatus.connecting) return;
+
+    // 防抖：3 秒内的多次变更只触发一次同步
+    _dataSyncDebounceTimer?.cancel();
+    _dataSyncDebounceTimer = Timer(const Duration(seconds: 3), () {
+      debugPrint('[SyncProvider] 数据变更，触发同步');
+      _syncWithExistingDevices();
+    });
+  }
+
+  /// 仅与已发现的设备同步（不发送广播）
+  Future<void> _syncWithExistingDevices() async {
+    if (state.devices.isEmpty) return;
+    
+    // 如果正在同步，忽略
+    if (state.status == SyncStatus.syncing || 
+        state.status == SyncStatus.connecting) return;
+
+    debugPrint('[SyncProvider] 与已发现设备同步，设备数: ${state.devices.length}');
+    
+    for (final device in state.devices) {
+      await syncWithDevice(device);
+    }
+  }
+
+  /// 启动心跳检测（定期检查设备是否在线）
+  void _startHeartbeat() {
+    _heartbeatTimer?.cancel();
+    _heartbeatTimer = Timer.periodic(const Duration(minutes: 1), (_) {
+      if (state.devices.isNotEmpty && state.status == SyncStatus.idle) {
+        debugPrint('[SyncProvider] 心跳检测，尝试同步');
+        _syncWithExistingDevices();
+      }
+    });
+  }
+
+  /// 停止心跳检测
+  void _stopHeartbeat() {
+    _heartbeatTimer?.cancel();
+    _heartbeatTimer = null;
+  }
+
   @override
   void dispose() {
     _broadcastAnimationTimer?.cancel();
+    _dataSyncDebounceTimer?.cancel();
+    _heartbeatTimer?.cancel();
     _devicesSub?.cancel();
     _eventsSub?.cancel();
     _discoveryService?.dispose();

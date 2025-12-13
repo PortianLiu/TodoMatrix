@@ -54,6 +54,12 @@ class LocalSettings {
   /// 是否启用同步
   final bool syncEnabled;
 
+  /// 用户 UID（用于多用户隔离，相同 UID 的设备才能同步）
+  final String userUid;
+
+  /// 可信设备列表（设备 ID 列表）
+  final List<String> trustedDevices;
+
   const LocalSettings({
     this.themeMode = ThemeMode.system,
     this.themeColor = '9999ff',
@@ -70,6 +76,8 @@ class LocalSettings {
     this.columnsPerRow = 3,
     this.listHeight = 400,
     this.syncEnabled = false,
+    this.userUid = '',
+    this.trustedDevices = const [],
   });
 
   factory LocalSettings.fromJson(Map<String, dynamic> json) =>
@@ -93,6 +101,8 @@ class LocalSettings {
     int? columnsPerRow,
     double? listHeight,
     bool? syncEnabled,
+    String? userUid,
+    List<String>? trustedDevices,
     bool clearCustomDataPath = false,
   }) {
     return LocalSettings(
@@ -112,28 +122,38 @@ class LocalSettings {
       columnsPerRow: columnsPerRow ?? this.columnsPerRow,
       listHeight: listHeight ?? this.listHeight,
       syncEnabled: syncEnabled ?? this.syncEnabled,
+      userUid: userUid ?? this.userUid,
+      trustedDevices: trustedDevices ?? this.trustedDevices,
     );
   }
 
   @override
   bool operator ==(Object other) {
     if (identical(this, other)) return true;
-    return other is LocalSettings &&
-        other.themeMode == themeMode &&
-        other.themeColor == themeColor &&
-        other.deviceName == deviceName &&
-        other.customDataPath == customDataPath &&
-        other.minimizeToTray == minimizeToTray &&
-        other.pinToDesktop == pinToDesktop &&
-        other.edgeHideEnabled == edgeHideEnabled &&
-        other.pinOpacity == pinOpacity &&
-        other.windowX == windowX &&
-        other.windowY == windowY &&
-        other.windowWidth == windowWidth &&
-        other.windowHeight == windowHeight &&
-        other.columnsPerRow == columnsPerRow &&
-        other.listHeight == listHeight &&
-        other.syncEnabled == syncEnabled;
+    if (other is! LocalSettings) return false;
+    if (other.themeMode != themeMode ||
+        other.themeColor != themeColor ||
+        other.deviceName != deviceName ||
+        other.customDataPath != customDataPath ||
+        other.minimizeToTray != minimizeToTray ||
+        other.pinToDesktop != pinToDesktop ||
+        other.edgeHideEnabled != edgeHideEnabled ||
+        other.pinOpacity != pinOpacity ||
+        other.windowX != windowX ||
+        other.windowY != windowY ||
+        other.windowWidth != windowWidth ||
+        other.windowHeight != windowHeight ||
+        other.columnsPerRow != columnsPerRow ||
+        other.listHeight != listHeight ||
+        other.syncEnabled != syncEnabled ||
+        other.userUid != userUid ||
+        other.trustedDevices.length != trustedDevices.length) {
+      return false;
+    }
+    for (int i = 0; i < trustedDevices.length; i++) {
+      if (trustedDevices[i] != other.trustedDevices[i]) return false;
+    }
+    return true;
   }
 
   @override
@@ -153,5 +173,7 @@ class LocalSettings {
         columnsPerRow,
         listHeight,
         syncEnabled,
+        userUid,
+        Object.hashAll(trustedDevices),
       );
 }

@@ -13,6 +13,7 @@ class DeviceInfo {
   final InternetAddress address;
   final int port;
   final DateTime lastSeen;
+  final String userUid;
 
   DeviceInfo({
     required this.deviceId,
@@ -21,7 +22,11 @@ class DeviceInfo {
     required this.address,
     required this.port,
     required this.lastSeen,
+    this.userUid = '',
   });
+
+  /// 用户 UID（用于多用户隔离）
+  final String userUid;
 
   factory DeviceInfo.fromJson(Map<String, dynamic> json, InternetAddress address) {
     return DeviceInfo(
@@ -31,6 +36,7 @@ class DeviceInfo {
       address: address,
       port: json['port'] as int? ?? DiscoveryService.syncPort,
       lastSeen: DateTime.now(),
+      userUid: json['userUid'] as String? ?? '',
     );
   }
 
@@ -40,6 +46,7 @@ class DeviceInfo {
     'deviceName': deviceName,
     'version': version,
     'port': port,
+    'userUid': userUid,
     'timestamp': DateTime.now().toIso8601String(),
   };
 
@@ -64,10 +71,11 @@ class DiscoveryService {
   final String _deviceId;
   final String _deviceName;
   final String _version;
+  String _userUid;
+  List<String> _trustedDevices;
 
   RawDatagramSocket? _socket;
   Timer? _broadcastTimer;
-  Timer? _cleanupTimer;
 
   final Map<String, DeviceInfo> _discoveredDevices = {};
   final _devicesController = StreamController<List<DeviceInfo>>.broadcast();
@@ -88,7 +96,7 @@ class DiscoveryService {
   }
 
   /// 手动添加设备（被动接收连接时调用）
-  void addDevice(String deviceId, String deviceName, InternetAddress address) {
+  void addDevice(String deviceId, String deviceName, InternetAddress address, {String userUid = ''}) {
     if (deviceId == _deviceId) return; // 忽略自己
     
     final device = DeviceInfo(
@@ -98,6 +106,7 @@ class DiscoveryService {
       address: address,
       port: syncPort,
       lastSeen: DateTime.now(),
+      userUid: userUid,
     );
     
     final isNew = !_discoveredDevices.containsKey(deviceId);
@@ -115,9 +124,19 @@ class DiscoveryService {
     String? deviceId,
     required String deviceName,
     String version = '1.0',
+    String userUid = '',
+    List<String> trustedDevices = const [],
   })  : _deviceId = deviceId ?? const Uuid().v4(),
         _deviceName = deviceName,
-        _version = version;
+        _version = version,
+        _userUid = userUid,
+        _trustedDevices = trustedDevices;
+
+  /// 更新用户 UID 和可信设备列表
+  void updateUserSettings(String userUid, List<String> trustedDevices) {
+    _userUid = userUid;
+    _trustedDevices = trustedDevices;
+  }
 
   /// 启动设备发现（仅启动监听，不自动广播）
   Future<void> startDiscovery() async {
@@ -217,6 +236,7 @@ class DiscoveryService {
       address: InternetAddress.anyIPv4,
       port: syncPort,
       lastSeen: DateTime.now(),
+      userUid: _userUid,
     ).toJson();
 
     final data = utf8.encode(jsonEncode(message));
@@ -298,9 +318,20 @@ class DiscoveryService {
         return;
       }
 
-      debugPrint('[Discovery] ★★★ 发现新设备: $deviceName ($deviceId) @ $sourceAddr ★★★');
-      
       final device = DeviceInfo.fromJson(message, datagram.address);
+      
+      // 检查是否允许同步：相同 UID 或在可信设备列表中
+      final isSameUser = _userUid.isNotEmpty && device.userUid == _userUid;
+      final isTrusted = _trustedDevices.contains(deviceId);
+      
+      if (!isSameUser && !isTrusted) {
+        debugPrint('[Discovery] 设备 $deviceName 不在可信列表且 UID 不匹配，忽略');
+        debugPrint('[Discovery]   本机 UID: $_userUid, 对方 UID: ${device.userUid}');
+        return;
+      }
+      
+      debugPrint('[Discovery] ★★★ 发现可信设备: $deviceName ($deviceId) @ $sourceAddr ★★★');
+      
       final isNew = !_discoveredDevices.containsKey(deviceId);
       _discoveredDevices[deviceId] = device;
       

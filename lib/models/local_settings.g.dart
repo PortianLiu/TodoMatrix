@@ -25,6 +25,11 @@ LocalSettings _$LocalSettingsFromJson(Map<String, dynamic> json) =>
       columnsPerRow: (json['columnsPerRow'] as num?)?.toInt() ?? 3,
       listHeight: (json['listHeight'] as num?)?.toDouble() ?? 400,
       syncEnabled: json['syncEnabled'] as bool? ?? false,
+      userUid: json['userUid'] as String? ?? '',
+      trustedDevices: (json['trustedDevices'] as List<dynamic>?)
+              ?.map((e) => e as String)
+              .toList() ??
+          const [],
     );
 
 Map<String, dynamic> _$LocalSettingsToJson(LocalSettings instance) =>
@@ -44,4 +49,6 @@ Map<String, dynamic> _$LocalSettingsToJson(LocalSettings instance) =>
       'columnsPerRow': instance.columnsPerRow,
       'listHeight': instance.listHeight,
       'syncEnabled': instance.syncEnabled,
+      'userUid': instance.userUid,
+      'trustedDevices': instance.trustedDevices,
     };

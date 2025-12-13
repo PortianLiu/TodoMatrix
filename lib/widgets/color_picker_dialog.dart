@@ -132,10 +132,18 @@ class _ColorPickerDialogState extends State<ColorPickerDialog> {
               runSpacing: 8,
               children: widget.presetColors.map((colorHex) {
                 final lightColor = hexToColor(colorHex);
-                // 深色模式下显示转换后的颜色，白色除外
-                final displayColor = (_isDarkMode && colorHex != 'ffffff')
-                    ? lightToDark(lightColor)
-                    : lightColor;
+                // 深色模式下显示转换后的颜色
+                // 白色在深色模式下显示为卡片默认背景色（深灰/黑）
+                Color displayColor;
+                if (_isDarkMode) {
+                  if (colorHex == 'ffffff') {
+                    displayColor = Theme.of(context).cardColor;
+                  } else {
+                    displayColor = lightToDark(lightColor);
+                  }
+                } else {
+                  displayColor = lightColor;
+                }
                 final isSelected = widget.currentColor == colorHex;
                 return GestureDetector(
                   onTap: () {

@@ -685,11 +685,19 @@ class _ListOrderSectionState extends ConsumerState<_ListOrderSection> {
   }
 
   Widget _buildListChip(BuildContext context, dynamic list) {
-    // 获取列表底色（带透明度，适配深浅色模式）
+    // 获取列表底色（适配深浅色模式）
     Color bgColor;
     if (list.backgroundColor != null && list.backgroundColor != 'ffffff') {
+      final isDark = Theme.of(context).brightness == Brightness.dark;
       final baseColor = _hexToColor(list.backgroundColor!);
-      bgColor = baseColor.withValues(alpha: 0.15);
+      if (isDark) {
+        // 深色模式：降低亮度
+        final hsl = HSLColor.fromColor(baseColor);
+        final darkHsl = hsl.withLightness((hsl.lightness * 0.3).clamp(0.15, 0.35));
+        bgColor = darkHsl.toColor();
+      } else {
+        bgColor = baseColor;
+      }
     } else {
       bgColor = Theme.of(context).cardColor;
     }

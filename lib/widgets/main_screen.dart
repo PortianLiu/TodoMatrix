@@ -474,20 +474,28 @@ class _MainScreenState extends ConsumerState<MainScreen> {
     );
   }
 
+  /// 计算在线的可信设备数量
+  int _getOnlineTrustedDeviceCount(SyncState syncState, List<String> trustedDevices) {
+    return syncState.devices.where((d) => 
+        d.userUid.isNotEmpty && trustedDevices.contains(d.userUid)
+    ).length;
+  }
+
   /// 构建同步按钮（Windows）
   Widget _buildSyncButton() {
     final syncState = ref.watch(syncProvider);
+    final settings = ref.watch(localSettingsProvider);
     final isAnimating = syncState.status == SyncStatus.broadcasting ||
         syncState.status == SyncStatus.syncing ||
         syncState.status == SyncStatus.connecting;
-    final hasDevices = syncState.devices.isNotEmpty;
+    final trustedOnlineCount = _getOnlineTrustedDeviceCount(syncState, settings.trustedDevices);
 
     return _SyncIconButton(
       isAnimating: isAnimating,
-      hasDevices: hasDevices,
+      hasTrustedDevicesOnline: trustedOnlineCount > 0,
       status: syncState.status,
-      tooltip: _getSyncTooltip(syncState),
-      onPressed: () => _handleSyncButtonPressed(syncState),
+      tooltip: _getSyncTooltip(syncState, trustedOnlineCount),
+      onPressed: () => _handleSyncButtonPressed(syncState, trustedOnlineCount),
       iconSize: 20,
       compact: true,
     );
@@ -496,31 +504,32 @@ class _MainScreenState extends ConsumerState<MainScreen> {
   /// 构建同步按钮（移动端）
   Widget _buildMobileSyncButton() {
     final syncState = ref.watch(syncProvider);
+    final settings = ref.watch(localSettingsProvider);
     final isAnimating = syncState.status == SyncStatus.broadcasting ||
         syncState.status == SyncStatus.syncing ||
         syncState.status == SyncStatus.connecting;
-    final hasDevices = syncState.devices.isNotEmpty;
+    final trustedOnlineCount = _getOnlineTrustedDeviceCount(syncState, settings.trustedDevices);
 
     return _SyncIconButton(
       isAnimating: isAnimating,
-      hasDevices: hasDevices,
+      hasTrustedDevicesOnline: trustedOnlineCount > 0,
       status: syncState.status,
-      tooltip: _getSyncTooltip(syncState),
-      onPressed: () => _handleSyncButtonPressed(syncState),
+      tooltip: _getSyncTooltip(syncState, trustedOnlineCount),
+      onPressed: () => _handleSyncButtonPressed(syncState, trustedOnlineCount),
       iconSize: 24,
       compact: false,
     );
   }
 
   /// 获取同步按钮提示文本
-  String _getSyncTooltip(SyncState syncState) {
+  String _getSyncTooltip(SyncState syncState, int trustedOnlineCount) {
     switch (syncState.status) {
       case SyncStatus.idle:
-        return syncState.devices.isEmpty 
-            ? '点击同步' 
-            : '点击同步 (${syncState.devices.length} 个设备在线)';
+        return trustedOnlineCount == 0 
+            ? '点击发现设备' 
+            : '点击同步 ($trustedOnlineCount 个可信设备在线)';
       case SyncStatus.broadcasting:
-        return '正在广播...';
+        return '正在发现设备...';
       case SyncStatus.connecting:
         return '正在连接...';
       case SyncStatus.syncing:
@@ -533,11 +542,11 @@ class _MainScreenState extends ConsumerState<MainScreen> {
   }
 
   /// 处理同步按钮点击
-  Future<void> _handleSyncButtonPressed(SyncState syncState) async {
+  Future<void> _handleSyncButtonPressed(SyncState syncState, int trustedOnlineCount) async {
     final syncNotifier = ref.read(syncProvider.notifier);
     final settings = ref.read(localSettingsProvider);
 
-    debugPrint('[Sync] 按钮点击，当前状态: ${syncState.status}');
+    debugPrint('[Sync] 按钮点击，当前状态: ${syncState.status}，可信设备在线: $trustedOnlineCount');
 
     // 检查是否启用同步功能
     if (!settings.syncEnabled) {
@@ -564,15 +573,22 @@ class _MainScreenState extends ConsumerState<MainScreen> {
     // 确保服务已初始化
     await syncNotifier.initialize(settings.deviceName);
     
-    // 发起广播并同步
-    await syncNotifier.broadcastAndSync();
+    if (trustedOnlineCount > 0) {
+      // 有可信设备在线，直接同步（不广播）
+      debugPrint('[Sync] 有可信设备在线，直接同步');
+      await syncNotifier.syncWithTrustedDevices();
+    } else {
+      // 无可信设备在线，发起广播发现设备
+      debugPrint('[Sync] 无可信设备在线，发起广播');
+      await syncNotifier.broadcastAndSync();
+    }
   }
 }
 
 /// 同步图标按钮（带旋转动画）
 class _SyncIconButton extends StatefulWidget {
   final bool isAnimating;
-  final bool hasDevices;
+  final bool hasTrustedDevicesOnline;  // 是否有可信设备在线
   final SyncStatus status;
   final String tooltip;
   final VoidCallback onPressed;
@@ -581,7 +597,7 @@ class _SyncIconButton extends StatefulWidget {
 
   const _SyncIconButton({
     required this.isAnimating,
-    required this.hasDevices,
+    required this.hasTrustedDevicesOnline,
     required this.status,
     required this.tooltip,
     required this.onPressed,
@@ -632,26 +648,43 @@ class _SyncIconButtonState extends State<_SyncIconButton>
 
   @override
   Widget build(BuildContext context) {
-    // 根据状态确定颜色
-    // 优先级：动画中 > 完成 > 失败 > 有设备在线 > 正在监听 > 默认
+    // 根据状态确定颜色和图标
+    // 优先级：动画中 > 完成 > 失败 > 有可信设备在线 > 默认
     Color iconColor;
+    IconData iconData = Icons.sync;
+    
     if (widget.isAnimating) {
       // 正在广播/连接/同步时使用主题色
       iconColor = Theme.of(context).colorScheme.primary;
     } else if (widget.status == SyncStatus.completed) {
-      // 同步完成显示绿色
+      // 同步完成显示绿色勾号
       iconColor = Colors.green;
+      iconData = Icons.check;
     } else if (widget.status == SyncStatus.failed) {
       // 同步失败显示红色
       iconColor = Colors.red;
-    } else if (widget.hasDevices) {
-      // 有设备在线显示绿色（表示可以同步）
+    } else if (widget.hasTrustedDevicesOnline) {
+      // 有可信设备在线显示绿色（表示可以同步）
       iconColor = Colors.green;
     } else {
-      // 默认颜色
+      // 默认颜色（无可信设备在线）
       iconColor = widget.compact
           ? Theme.of(context).colorScheme.onPrimaryContainer
           : Theme.of(context).colorScheme.onSurface;
+    }
+
+    // 同步完成时不需要旋转动画，直接显示勾号
+    if (widget.status == SyncStatus.completed) {
+      return IconButton(
+        icon: Icon(
+          iconData,
+          size: widget.iconSize,
+          color: iconColor,
+        ),
+        tooltip: widget.tooltip,
+        onPressed: widget.onPressed,
+        visualDensity: widget.compact ? VisualDensity.compact : null,
+      );
     }
 
     return IconButton(
@@ -665,7 +698,7 @@ class _SyncIconButtonState extends State<_SyncIconButton>
               ..scale(-1.0, 1.0) // 水平翻转
               ..rotateZ(-_controller.value * 2 * math.pi), // 逆时针旋转
             child: Icon(
-              Icons.sync,
+              iconData,
               size: widget.iconSize,
               color: iconColor,
             ),

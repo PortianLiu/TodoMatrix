@@ -497,7 +497,7 @@ class SyncNotifier extends StateNotifier<SyncState> {
     });
   }
 
-  /// 仅与已发现的设备同步（不发送广播）
+  /// 仅与已发现的可信设备同步（不发送广播）
   Future<void> _syncWithExistingDevices() async {
     if (state.devices.isEmpty) {
       return;
@@ -509,9 +509,22 @@ class SyncNotifier extends StateNotifier<SyncState> {
       return;
     }
 
-    debugPrint('[SyncProvider] 与已发现设备同步，设备数: ${state.devices.length}');
+    final settings = _ref.read(localSettingsProvider);
+    final trustedDevices = settings.trustedDevices;
     
-    for (final device in state.devices) {
+    // 过滤出可信设备（使用 userUid 匹配）
+    final trustedList = state.devices.where((d) => 
+        d.userUid.isNotEmpty && trustedDevices.contains(d.userUid)
+    ).toList();
+    
+    if (trustedList.isEmpty) {
+      debugPrint('[SyncProvider] 没有在线的可信设备，跳过同步');
+      return;
+    }
+
+    debugPrint('[SyncProvider] 与可信设备同步，设备数: ${trustedList.length}');
+    
+    for (final device in trustedList) {
       await syncWithDevice(device);
     }
   }

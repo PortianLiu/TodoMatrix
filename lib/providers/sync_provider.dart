@@ -529,13 +529,13 @@ class SyncNotifier extends StateNotifier<SyncState> {
     }
   }
 
-  /// 启动心跳检测（定期检查设备是否在线）
+  /// 启动心跳检测（定期发送广播检测设备是否在线）
   void _startHeartbeat() {
     _heartbeatTimer?.cancel();
     _heartbeatTimer = Timer.periodic(const Duration(minutes: 1), (_) {
-      if (state.devices.isNotEmpty && state.status == SyncStatus.idle) {
-        debugPrint('[SyncProvider] 心跳检测，尝试同步');
-        _syncWithExistingDevices();
+      if (state.status == SyncStatus.idle) {
+        debugPrint('[SyncProvider] 心跳检测，发送广播...');
+        _discoveryService?.broadcastPresence();
       }
     });
   }

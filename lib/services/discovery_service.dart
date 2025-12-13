@@ -123,6 +123,10 @@ class DiscoveryService {
   // 可信请求相关
   final Map<String, Timer> _pendingRequestTimers = {};  // 待确认请求的超时计时器
   final _trustRequestController = StreamController<TrustRequest>.broadcast();  // 收到的可信请求流
+  
+  // 心跳相关
+  Set<String> _pendingHeartbeatAcks = {};  // 等待心跳回复的设备 UID
+  Timer? _heartbeatTimeoutTimer;  // 心跳超时计时器
 
   /// 发现的设备列表流
   Stream<List<DeviceInfo>> get discoveredDevices => _devicesController.stream;
@@ -449,6 +453,12 @@ class DiscoveryService {
   int sendHeartbeat() {
     if (_socket == null || _discoveredDevices.isEmpty) return 0;
 
+    // 取消之前的超时计时器
+    _heartbeatTimeoutTimer?.cancel();
+    
+    // 记录需要等待回复的设备
+    _pendingHeartbeatAcks = _discoveredDevices.keys.toSet();
+
     final message = {
       'type': 'heartbeat',
       'deviceId': _deviceId,
@@ -469,7 +479,31 @@ class DiscoveryService {
     }
 
     debugPrint('[Discovery] 已向 $count 个设备发送心跳');
+    
+    // 设置超时检测（10秒后检查未回复的设备）
+    _heartbeatTimeoutTimer = Timer(const Duration(seconds: 10), _handleHeartbeatTimeout);
+    
     return count;
+  }
+  
+  /// 处理心跳超时（移除未回复的设备）
+  void _handleHeartbeatTimeout() {
+    if (_pendingHeartbeatAcks.isEmpty) return;
+    
+    debugPrint('[Discovery] 心跳超时，${_pendingHeartbeatAcks.length} 个设备未回复');
+    
+    // 移除未回复的设备
+    for (final uid in _pendingHeartbeatAcks) {
+      final device = _discoveredDevices.remove(uid);
+      if (device != null) {
+        debugPrint('[Discovery] 移除离线设备: ${device.deviceName} (UID: $uid)');
+      }
+    }
+    
+    _pendingHeartbeatAcks.clear();
+    
+    // 通知设备列表变化
+    _notifyDevicesChanged();
   }
 
   /// 处理接收到的数据报
@@ -721,6 +755,9 @@ class DiscoveryService {
     
     if (fromUid == null || fromUid == _userUid) return;
     
+    // 从等待回复列表中移除（表示设备在线）
+    _pendingHeartbeatAcks.remove(fromUid);
+    
     // 更新设备最后在线时间（如果设备存在）
     final device = _discoveredDevices[fromUid];
     if (device != null) {
@@ -747,6 +784,9 @@ class DiscoveryService {
   /// 销毁服务
   void dispose() {
     stopDiscovery();
+    _heartbeatTimeoutTimer?.cancel();
+    _heartbeatTimeoutTimer = null;
+    _pendingHeartbeatAcks.clear();
     for (final timer in _pendingRequestTimers.values) {
       timer.cancel();
     }

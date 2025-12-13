@@ -127,8 +127,49 @@ class SyncNotifier extends StateNotifier<SyncState> {
     // 设置数据变更回调（用于触发同步）
     _ref.read(dataProvider.notifier).onDataChanged = onDataChanged;
 
-    // 注意：被动连接时不再自动添加设备，设备发现通过 UDP 广播完成
+    // 可信请求被接受的回调
+    _discoveryService!.onTrustAccepted = (acceptedUid) {
+      debugPrint('[SyncProvider] 可信请求被接受: $acceptedUid');
+      _addToTrustedDevices(acceptedUid);
+    };
+    
+    // 可信请求被拒绝的回调
+    _discoveryService!.onTrustRejected = (rejectedUid) {
+      debugPrint('[SyncProvider] 可信请求被拒绝: $rejectedUid');
+    };
   }
+  
+  /// 添加到可信设备列表
+  void _addToTrustedDevices(String userUid) {
+    final settings = _ref.read(localSettingsProvider);
+    if (!settings.trustedDevices.contains(userUid)) {
+      final newTrustedDevices = [...settings.trustedDevices, userUid];
+      _ref.read(dataProvider.notifier).updateSettings(
+        settings.copyWith(trustedDevices: newTrustedDevices),
+      );
+      _discoveryService?.updateUserSettings(settings.userUid, newTrustedDevices);
+    }
+  }
+  
+  /// 发送可信请求
+  void sendTrustRequest(DeviceInfo device) {
+    _discoveryService?.sendTrustRequest(device);
+  }
+  
+  /// 接受可信请求
+  void acceptTrustRequest(TrustRequest request) {
+    _discoveryService?.acceptTrustRequest(request);
+    // 同时将对方加入自己的可信列表
+    _addToTrustedDevices(request.fromUid);
+  }
+  
+  /// 拒绝可信请求
+  void rejectTrustRequest(TrustRequest request) {
+    _discoveryService?.rejectTrustRequest(request);
+  }
+  
+  /// 可信请求流
+  Stream<TrustRequest>? get trustRequests => _discoveryService?.trustRequests;
 
   /// 开始监听（应用启动时调用）
   Future<void> startListening() async {

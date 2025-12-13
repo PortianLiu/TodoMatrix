@@ -608,10 +608,42 @@ class SettingsPanel extends ConsumerWidget {
     );
   }
 
-  /// 构建已发现设备项（仅显示添加可信按钮）
+  /// 构建已发现设备项（支持可信请求状态）
   Widget _buildDiscoveredDeviceItem(BuildContext context, WidgetRef ref, DeviceInfo device, List<String> trustedDevices) {
     // 使用 userUid 判断是否为可信设备
     final isTrusted = device.userUid.isNotEmpty && trustedDevices.contains(device.userUid);
+    final trustStatus = device.trustStatus;
+
+    // 构建状态标签
+    Widget? statusBadge;
+    if (isTrusted) {
+      statusBadge = _buildBadge('已添加', Colors.green);
+    } else if (trustStatus == TrustRequestStatus.pending) {
+      statusBadge = _buildBadge('待确认', Colors.orange);
+    } else if (trustStatus == TrustRequestStatus.incoming) {
+      statusBadge = _buildBadge('请求中', Colors.blue);
+    }
+
+    // 构建操作按钮
+    Widget? trailingWidget;
+    if (isTrusted) {
+      trailingWidget = null;
+    } else if (trustStatus == TrustRequestStatus.pending) {
+      // 待确认状态，显示等待中
+      trailingWidget = const SizedBox(
+        width: 20,
+        height: 20,
+        child: CircularProgressIndicator(strokeWidth: 2),
+      );
+    } else if (device.userUid.isNotEmpty) {
+      // 可以发送请求
+      trailingWidget = TextButton(
+        onPressed: () => ref.read(syncProvider.notifier).sendTrustRequest(device),
+        child: const Text('添加'),
+      );
+    } else {
+      trailingWidget = const Text('UID未知', style: TextStyle(color: Colors.grey, fontSize: 12));
+    }
 
     return ListTile(
       contentPadding: const EdgeInsets.only(left: 72, right: 16),
@@ -623,31 +655,29 @@ class SettingsPanel extends ConsumerWidget {
               overflow: TextOverflow.ellipsis,
             ),
           ),
-          if (isTrusted)
-            Container(
-              margin: const EdgeInsets.only(left: 8),
-              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-              decoration: BoxDecoration(
-                color: Colors.green.withValues(alpha: 0.2),
-                borderRadius: BorderRadius.circular(4),
-              ),
-              child: const Text('已添加', style: TextStyle(fontSize: 10, color: Colors.green)),
-            ),
+          if (statusBadge != null) ...[
+            const SizedBox(width: 8),
+            statusBadge,
+          ],
         ],
       ),
       subtitle: Text(
         '${device.address.address} · UID: ${device.userUid.isNotEmpty ? (device.userUid.length > 12 ? '${device.userUid.substring(0, 12)}...' : device.userUid) : '未知'}',
         overflow: TextOverflow.ellipsis,
       ),
-      trailing: isTrusted
-          ? null
-          : TextButton(
-              // 使用 userUid 添加可信设备（如果没有 userUid 则不能添加）
-              onPressed: device.userUid.isNotEmpty 
-                  ? () => _toggleTrustedDevice(ref, device.userUid, false)
-                  : null,
-              child: Text(device.userUid.isEmpty ? 'UID未知' : '添加'),
-            ),
+      trailing: trailingWidget,
+    );
+  }
+
+  /// 构建状态标签
+  Widget _buildBadge(String text, Color color) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.2),
+        borderRadius: BorderRadius.circular(4),
+      ),
+      child: Text(text, style: TextStyle(fontSize: 10, color: color)),
     );
   }
 

@@ -9,6 +9,29 @@ Color hexToColor(String hex) {
   return Color(int.parse(hex, radix: 16));
 }
 
+/// 将颜色转换为十六进制字符串（不含#和透明度）
+String colorToHex(Color color) {
+  return color.value.toRadixString(16).substring(2).toLowerCase();
+}
+
+/// 将浅色转换为深色（用于深色模式显示）
+Color lightToDark(Color lightColor) {
+  final hsl = HSLColor.fromColor(lightColor);
+  final darkHsl = hsl.withLightness((hsl.lightness * 0.3).clamp(0.15, 0.35));
+  return darkHsl.toColor();
+}
+
+/// 将深色转换为浅色（用于深色模式下存储）
+Color darkToLight(Color darkColor) {
+  final hsl = HSLColor.fromColor(darkColor);
+  // 逆向转换：将深色亮度还原为浅色
+  // 原公式：darkL = lightL * 0.3，所以 lightL = darkL / 0.3
+  // 但需要限制在合理范围内（Material 50 级别通常在 0.85-0.95）
+  final lightL = (hsl.lightness / 0.3).clamp(0.85, 0.95);
+  final lightHsl = hsl.withLightness(lightL);
+  return lightHsl.toColor();
+}
+
 /// 颜色选择对话框（支持预设颜色和自定义颜色）
 class ColorPickerDialog extends StatefulWidget {
   final String title;
@@ -34,12 +57,37 @@ class _ColorPickerDialogState extends State<ColorPickerDialog> {
   late TextEditingController _controller;
   String? _errorText;
   Color? _previewColor;
+  bool _isDarkMode = false;
 
   @override
   void initState() {
     super.initState();
+    // 初始化时先用原色，didChangeDependencies 中会根据主题调整
     _controller = TextEditingController(text: widget.currentColor);
     _previewColor = hexToColor(widget.currentColor);
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    if (_isDarkMode != isDark) {
+      _isDarkMode = isDark;
+      // 深色模式下，显示转换后的颜色
+      if (isDark) {
+        if (widget.currentColor == 'ffffff') {
+          // 白色在深色模式下显示为卡片背景色
+          final cardColor = Theme.of(context).cardColor;
+          _controller.text = colorToHex(cardColor);
+          _previewColor = cardColor;
+        } else {
+          final lightColor = hexToColor(widget.currentColor);
+          final darkColor = lightToDark(lightColor);
+          _controller.text = colorToHex(darkColor);
+          _previewColor = darkColor;
+        }
+      }
+    }
   }
 
   @override
@@ -85,15 +133,28 @@ class _ColorPickerDialogState extends State<ColorPickerDialog> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // 预设颜色
+            // 预设颜色（深色模式下显示转换后的颜色）
             Wrap(
               spacing: 8,
               runSpacing: 8,
               children: widget.presetColors.map((colorHex) {
-                final color = hexToColor(colorHex);
+                final lightColor = hexToColor(colorHex);
+                // 深色模式下显示转换后的颜色
+                // 白色在深色模式下显示为卡片默认背景色（深灰/黑）
+                Color displayColor;
+                if (_isDarkMode) {
+                  if (colorHex == 'ffffff') {
+                    displayColor = Theme.of(context).cardColor;
+                  } else {
+                    displayColor = lightToDark(lightColor);
+                  }
+                } else {
+                  displayColor = lightColor;
+                }
                 final isSelected = widget.currentColor == colorHex;
                 return GestureDetector(
                   onTap: () {
+                    // 存储的始终是浅色色号
                     widget.onColorSelected(colorHex);
                     Navigator.pop(context);
                   },
@@ -101,7 +162,7 @@ class _ColorPickerDialogState extends State<ColorPickerDialog> {
                     width: widget.isCircle ? 40 : 36,
                     height: widget.isCircle ? 40 : 36,
                     decoration: BoxDecoration(
-                      color: color,
+                      color: displayColor,
                       shape: widget.isCircle ? BoxShape.circle : BoxShape.rectangle,
                       borderRadius: widget.isCircle ? null : BorderRadius.circular(6),
                       border: Border.all(
@@ -113,7 +174,7 @@ class _ColorPickerDialogState extends State<ColorPickerDialog> {
                     ),
                     child: isSelected
                         ? Icon(Icons.check,
-                            color: _isLightColor(color) ? Colors.black54 : Colors.white,
+                            color: _isLightColor(displayColor) ? Colors.black54 : Colors.white,
                             size: 18)
                         : null,
                   ),
@@ -173,7 +234,14 @@ class _ColorPickerDialogState extends State<ColorPickerDialog> {
           onPressed: _previewColor != null
               ? () {
                   final hex = _controller.text.replaceAll('#', '').trim();
-                  widget.onColorSelected(hex);
+                  String colorToSave = hex;
+                  // 深色模式下，用户输入的是深色，需要逆向转换为浅色存储
+                  if (_isDarkMode && hex != 'ffffff') {
+                    final darkColor = hexToColor(hex);
+                    final lightColor = darkToLight(darkColor);
+                    colorToSave = colorToHex(lightColor);
+                  }
+                  widget.onColorSelected(colorToSave);
                   Navigator.pop(context);
                 }
               : null,

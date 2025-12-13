@@ -298,14 +298,9 @@ class SyncService {
       final remotePacket = SyncDataPacket.fromJson(remoteMessage);
       debugPrint('[SyncService] 解析远程数据成功，${remotePacket.lists.length} 个列表');
 
-      // 通知发现服务添加/更新设备（被动方也能知道对方存在）
-      if (!isInitiator && socket.remoteAddress != null) {
-        onDeviceConnected?.call(
-          remotePacket.deviceId,
-          remotePacket.deviceId, // 使用 deviceId 作为名称（实际名称在广播中）
-          socket.remoteAddress,
-        );
-      }
+      // 注意：被动连接时不再自动添加设备到发现列表
+      // 因为 SyncDataPacket.deviceId 是设备名称，不是唯一ID
+      // 设备发现应该通过 UDP 广播来完成
 
       // 合并数据
       final mergeResult = _mergeData(localPacket, remotePacket);

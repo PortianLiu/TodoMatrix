@@ -243,6 +243,26 @@ class DiscoveryService {
   
   /// 可信请求被拒绝的回调
   void Function(String rejectedUid)? onTrustRejected;
+  
+  /// 被对方移除可信的回调
+  void Function(String removedByUid)? onTrustRemovedByPeer;
+  
+  /// 通知对方已被移除可信设备
+  void notifyTrustRemoved(String targetUid) {
+    final device = _discoveredDevices[targetUid];
+    if (_socket == null || device == null) return;
+    
+    final message = {
+      'type': 'trust_remove',
+      'fromUid': _userUid,
+      'toUid': targetUid,
+      'timestamp': DateTime.now().toIso8601String(),
+    };
+    
+    final data = utf8.encode(jsonEncode(message));
+    _socket!.send(data, device.address, discoveryPort);
+    debugPrint('[Discovery] 通知 ${device.deviceName} 已被移除可信');
+  }
 
   DiscoveryService({
     String? deviceId,
@@ -465,6 +485,9 @@ class DiscoveryService {
         case 'trust_reject':
           _handleTrustReject(message);
           break;
+        case 'trust_remove':
+          _handleTrustRemove(message);
+          break;
         default:
           debugPrint('[Discovery] 未知消息类型: $messageType');
       }
@@ -621,6 +644,22 @@ class DiscoveryService {
     
     // 通知回调
     onTrustRejected?.call(fromUid);
+  }
+
+  /// 处理被移除可信消息
+  void _handleTrustRemove(Map<String, dynamic> message) {
+    final fromUid = message['fromUid'] as String?;
+    final toUid = message['toUid'] as String?;
+    
+    if (fromUid == null || toUid == null) return;
+    
+    // 检查是否是发给自己的
+    if (toUid != _userUid) return;
+    
+    debugPrint('[Discovery] 被 $fromUid 移除可信设备');
+    
+    // 通知回调（让上层处理移除逻辑）
+    onTrustRemovedByPeer?.call(fromUid);
   }
 
   /// 通知设备列表变化

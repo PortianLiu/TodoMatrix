@@ -113,6 +113,7 @@ class SyncNotifier extends StateNotifier<SyncState> {
       
       return SyncDataPacket(
         deviceId: settings.deviceName,
+        userUid: settings.userUid,  // 包含 userUid 用于可信验证
         manifest: dataState.manifest,
         lists: dataState.sortedLists,
       );
@@ -122,6 +123,17 @@ class SyncNotifier extends StateNotifier<SyncState> {
     _syncService!.onDataUpdated = (manifest, lists) {
       debugPrint('[SyncProvider] 收到合并后的数据，更新本地状态');
       _ref.read(dataProvider.notifier).applySyncedData(manifest, lists);
+    };
+    
+    // 检查对方是否在可信列表中
+    _syncService!.isTrustedDevice = (userUid) {
+      final settings = _ref.read(localSettingsProvider);
+      return settings.trustedDevices.contains(userUid);
+    };
+    
+    // 通知对方已被移除可信
+    _syncService!.notifyTrustRemoved = (userUid) {
+      _discoveryService?.notifyTrustRemoved(userUid);
     };
 
     // 设置数据变更回调（用于触发同步）
@@ -137,6 +149,32 @@ class SyncNotifier extends StateNotifier<SyncState> {
     _discoveryService!.onTrustRejected = (rejectedUid) {
       debugPrint('[SyncProvider] 可信请求被拒绝: $rejectedUid');
     };
+    
+    // 被对方移除可信的回调
+    _discoveryService!.onTrustRemovedByPeer = (removedByUid) {
+      debugPrint('[SyncProvider] 被 $removedByUid 移除可信设备');
+      _removeFromTrustedDevices(removedByUid);
+    };
+  }
+  
+  /// 从可信设备列表移除
+  void _removeFromTrustedDevices(String userUid) {
+    final settings = _ref.read(localSettingsProvider);
+    if (settings.trustedDevices.contains(userUid)) {
+      final newTrustedDevices = settings.trustedDevices.where((id) => id != userUid).toList();
+      _ref.read(dataProvider.notifier).updateSettings(
+        settings.copyWith(trustedDevices: newTrustedDevices),
+      );
+      _discoveryService?.updateUserSettings(settings.userUid, newTrustedDevices);
+    }
+  }
+  
+  /// 移除可信设备（并通知对方）
+  void removeTrustedDevice(String userUid) {
+    // 先通知对方
+    _discoveryService?.notifyTrustRemoved(userUid);
+    // 再从本地移除
+    _removeFromTrustedDevices(userUid);
   }
   
   /// 添加到可信设备列表

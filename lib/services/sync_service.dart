@@ -77,12 +77,14 @@ class ConflictItem {
 
 /// 同步数据包（用于网络传输）
 class SyncDataPacket {
-  final String deviceId;
+  final String deviceId;    // 设备名称
+  final String userUid;     // 用户UID（用于可信设备验证）
   final SyncManifest manifest;
   final List<TodoList> lists;
 
   SyncDataPacket({
     required this.deviceId,
+    required this.userUid,
     required this.manifest,
     required this.lists,
   });
@@ -90,6 +92,7 @@ class SyncDataPacket {
   Map<String, dynamic> toJson() => {
     'type': 'sync_data',
     'deviceId': deviceId,
+    'userUid': userUid,
     'manifest': manifest.toJson(),
     'lists': lists.map((l) => l.toJson()).toList(),
   };
@@ -97,6 +100,7 @@ class SyncDataPacket {
   factory SyncDataPacket.fromJson(Map<String, dynamic> json) {
     return SyncDataPacket(
       deviceId: json['deviceId'] as String,
+      userUid: json['userUid'] as String? ?? '',
       manifest: SyncManifest.fromJson(json['manifest'] as Map<String, dynamic>),
       lists: (json['lists'] as List<dynamic>)
           .map((e) => TodoList.fromJson(e as Map<String, dynamic>))
@@ -161,6 +165,12 @@ class SyncService {
 
   /// 数据更新回调（合并后的清单和列表）
   void Function(SyncManifest manifest, List<TodoList> lists)? onDataUpdated;
+  
+  /// 检查对方是否在可信列表中的回调
+  bool Function(String userUid)? isTrustedDevice;
+  
+  /// 通知对方已被移除可信的回调
+  void Function(String userUid)? notifyTrustRemoved;
 
   SyncService({required String deviceId}) : _deviceId = deviceId;
 
@@ -297,10 +307,19 @@ class SyncService {
 
       final remotePacket = SyncDataPacket.fromJson(remoteMessage);
       debugPrint('[SyncService] 解析远程数据成功，${remotePacket.lists.length} 个列表');
+      debugPrint('[SyncService] 对方 UID: ${remotePacket.userUid}');
 
-      // 注意：被动连接时不再自动添加设备到发现列表
-      // 因为 SyncDataPacket.deviceId 是设备名称，不是唯一ID
-      // 设备发现应该通过 UDP 广播来完成
+      // 检查对方是否在可信列表中
+      if (remotePacket.userUid.isNotEmpty && isTrustedDevice != null) {
+        final isTrusted = isTrustedDevice!(remotePacket.userUid);
+        if (!isTrusted) {
+          debugPrint('[SyncService] 对方不在可信列表中，拒绝同步');
+          _emitEvent(SyncEventType.failed, message: '对方不在可信列表中');
+          // 通知对方已被移除
+          notifyTrustRemoved?.call(remotePacket.userUid);
+          return;
+        }
+      }
 
       // 合并数据
       final mergeResult = _mergeData(localPacket, remotePacket);

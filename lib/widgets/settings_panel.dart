@@ -925,20 +925,23 @@ class SettingsPanel extends ConsumerWidget {
     );
   }
   /// 切换可信设备状态
-  void _toggleTrustedDevice(WidgetRef ref, String deviceId, bool currentlyTrusted) {
-    final settings = ref.read(localSettingsProvider);
-    final newTrustedDevices = List<String>.from(settings.trustedDevices);
-    
+  /// deviceId: 实际上是 userUid（用户唯一标识）
+  /// currentlyTrusted: true 表示删除，false 表示添加
+  void _toggleTrustedDevice(WidgetRef ref, String userUid, bool currentlyTrusted) {
     if (currentlyTrusted) {
-      newTrustedDevices.remove(deviceId);
+      // 删除可信设备：通知对方并从本地移除
+      ref.read(syncProvider.notifier).removeTrustedDevice(userUid);
     } else {
-      newTrustedDevices.add(deviceId);
+      // 添加可信设备：直接添加到本地列表
+      final settings = ref.read(localSettingsProvider);
+      final newTrustedDevices = List<String>.from(settings.trustedDevices);
+      newTrustedDevices.add(userUid);
+      
+      ref.read(dataProvider.notifier).updateSettings(
+            settings.copyWith(trustedDevices: newTrustedDevices),
+          );
+      ref.read(syncProvider.notifier).updateUserSettings(settings.userUid, newTrustedDevices);
     }
-    
-    ref.read(dataProvider.notifier).updateSettings(
-          settings.copyWith(trustedDevices: newTrustedDevices),
-        );
-    ref.read(syncProvider.notifier).updateUserSettings(settings.userUid, newTrustedDevices);
   }
 
 

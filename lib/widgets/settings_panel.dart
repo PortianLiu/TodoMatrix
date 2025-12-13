@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:window_manager/window_manager.dart';
 
@@ -55,6 +56,7 @@ class SettingsPanel extends ConsumerWidget {
           _buildSyncTile(context, ref, settings.syncEnabled),
           _buildDeviceNameTile(context, ref, settings.deviceName),
           if (settings.syncEnabled) ...[
+            _buildUserUidTile(context, ref, settings.userUid),
             _buildSyncStatusTile(context, ref),
             _buildDeviceListTile(context, ref),
           ],
@@ -286,6 +288,102 @@ class SettingsPanel extends ConsumerWidget {
       subtitle: Text(deviceName),
       trailing: const Icon(Icons.edit_outlined),
       onTap: () => _showDeviceNameDialog(context, ref, deviceName),
+    );
+  }
+
+  /// 构建用户 UID 设置项
+  Widget _buildUserUidTile(BuildContext context, WidgetRef ref, String userUid) {
+    return ListTile(
+      leading: const Icon(Icons.fingerprint),
+      title: const Text('用户标识 (UID)'),
+      subtitle: Text(userUid.isEmpty ? '未设置（点击生成或输入）' : userUid),
+      trailing: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (userUid.isNotEmpty)
+            IconButton(
+              icon: const Icon(Icons.copy, size: 20),
+              tooltip: '复制 UID',
+              onPressed: () {
+                // 复制到剪贴板
+                _copyToClipboard(context, userUid);
+              },
+            ),
+          const Icon(Icons.edit_outlined),
+        ],
+      ),
+      onTap: () => _showUserUidDialog(context, ref, userUid),
+    );
+  }
+
+  /// 复制到剪贴板
+  void _copyToClipboard(BuildContext context, String text) {
+    Clipboard.setData(ClipboardData(text: text));
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('已复制到剪贴板'), duration: Duration(seconds: 1)),
+    );
+  }
+
+  /// 显示用户 UID 编辑对话框
+  void _showUserUidDialog(BuildContext context, WidgetRef ref, String currentUid) {
+    final controller = TextEditingController(text: currentUid);
+
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('用户标识 (UID)'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              '相同 UID 的设备可以互相同步数据。\n'
+              '你可以手动输入一个 UID，或点击生成按钮创建一个随机 UID。',
+              style: TextStyle(fontSize: 12, color: Colors.grey),
+            ),
+            const SizedBox(height: 16),
+            TextField(
+              controller: controller,
+              decoration: const InputDecoration(
+                hintText: '输入或生成 UID',
+                border: OutlineInputBorder(),
+              ),
+            ),
+            const SizedBox(height: 8),
+            Align(
+              alignment: Alignment.centerRight,
+              child: TextButton.icon(
+                icon: const Icon(Icons.refresh, size: 18),
+                label: const Text('生成随机 UID'),
+                onPressed: () {
+                  // 生成 6 位随机字符串
+                  final random = DateTime.now().millisecondsSinceEpoch.toRadixString(36).substring(0, 6).toUpperCase();
+                  controller.text = random;
+                },
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('取消'),
+          ),
+          TextButton(
+            onPressed: () {
+              final newUid = controller.text.trim().toUpperCase();
+              final currentSettings = ref.read(localSettingsProvider);
+              ref.read(dataProvider.notifier).updateSettings(
+                    currentSettings.copyWith(userUid: newUid),
+                  );
+              // 更新发现服务的 UID
+              ref.read(syncProvider.notifier).updateUserSettings(newUid, currentSettings.trustedDevices);
+              Navigator.of(context).pop();
+            },
+            child: const Text('确定'),
+          ),
+        ],
+      ),
     );
   }
 

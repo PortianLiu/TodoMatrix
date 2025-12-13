@@ -299,6 +299,11 @@ class SyncNotifier extends StateNotifier<SyncState> {
     state = state.copyWith(status: SyncStatus.idle);
   }
 
+  /// 更新用户设置（UID 和可信设备）
+  void updateUserSettings(String userUid, List<String> trustedDevices) {
+    _discoveryService?.updateUserSettings(userUid, trustedDevices);
+  }
+
   /// 数据变更时触发同步（带防抖）
   void onDataChanged() {
     // 如果同步未启用或没有设备，忽略

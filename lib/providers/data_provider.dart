@@ -157,6 +157,9 @@ class DataNotifier extends StateNotifier<AppDataState> {
     }
   }
 
+  /// 数据变更回调（用于触发同步）
+  void Function()? onDataChanged;
+
   /// 更新清单并保存
   void _updateManifest(SyncManifest manifest) {
     state = state.copyWith(
@@ -185,6 +188,9 @@ class DataNotifier extends StateNotifier<AppDataState> {
       );
       _updateManifest(state.manifest.copyWith(lists: newMetas));
     }
+    
+    // 通知数据变更
+    onDataChanged?.call();
   }
 
   /// 更新设置并保存

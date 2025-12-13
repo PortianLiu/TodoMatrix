@@ -123,7 +123,8 @@ class SyncManifest {
   });
 
   factory SyncManifest.empty() {
-    return SyncManifest(lastModified: DateTime.now());
+    // 使用一个很早的时间，确保同步时优先采用其他设备的数据
+    return SyncManifest(lastModified: DateTime(2000, 1, 1));
   }
 
   factory SyncManifest.fromJson(Map<String, dynamic> json) =>

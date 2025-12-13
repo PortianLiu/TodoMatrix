@@ -323,6 +323,8 @@ class DiscoveryService {
       
       if (isNew) {
         debugPrint('[Discovery] 新设备已添加到列表，当前设备数: ${_discoveredDevices.length}');
+        // 发现新设备时，回复一次广播让对方也能发现自己
+        broadcastPresence();
       } else {
         debugPrint('[Discovery] 已知设备，更新最后在线时间');
       }

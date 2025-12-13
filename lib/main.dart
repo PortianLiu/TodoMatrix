@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'providers/data_provider.dart';
+import 'providers/sync_provider.dart';
 import 'services/window_service.dart';
 import 'widgets/main_screen.dart';
 
@@ -23,6 +24,18 @@ void main() async {
   debugPrint('[Main] 开始预加载数据...');
   await _container.read(dataProvider.notifier).loadData();
   debugPrint('[Main] 数据预加载完成');
+
+  // 如果同步功能已启用，初始化同步服务并开始监听
+  final settings = _container.read(localSettingsProvider);
+  if (settings.syncEnabled) {
+    debugPrint('[Main] 同步功能已启用，初始化同步服务...');
+    final syncNotifier = _container.read(syncProvider.notifier);
+    await syncNotifier.initialize(settings.deviceName);
+    await syncNotifier.startListening();
+    // 启动时发起一次广播和同步
+    await syncNotifier.broadcastAndSync();
+    debugPrint('[Main] 同步服务初始化完成');
+  }
 
   // Windows 平台初始化窗口服务
   if (!kIsWeb && Platform.isWindows) {

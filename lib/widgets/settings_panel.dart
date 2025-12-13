@@ -303,10 +303,22 @@ class SettingsPanel extends ConsumerWidget {
 
   /// 构建用户 UID 设置项
   Widget _buildUserUidTile(BuildContext context, WidgetRef ref, String userUid) {
+    // 如果 UID 为空，自动生成一个
+    if (userUid.isEmpty) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        final newUid = _generateUid();
+        final currentSettings = ref.read(localSettingsProvider);
+        ref.read(dataProvider.notifier).updateSettings(
+              currentSettings.copyWith(userUid: newUid),
+            );
+        ref.read(syncProvider.notifier).updateUserSettings(newUid, currentSettings.trustedDevices);
+      });
+    }
+
     return ListTile(
       leading: const Icon(Icons.fingerprint),
-      title: const Text('用户标识 (UID)'),
-      subtitle: Text(userUid.isEmpty ? '未设置（点击生成）' : userUid),
+      title: const Text('设备标识 (UID)'),
+      subtitle: Text(userUid.isEmpty ? '正在生成...' : userUid),
       trailing: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
@@ -316,13 +328,14 @@ class SettingsPanel extends ConsumerWidget {
               tooltip: '复制 UID',
               onPressed: () => _copyToClipboard(context, userUid),
             ),
-          if (userUid.isEmpty)
-            const Icon(Icons.add_circle_outline)
-          else
-            const Icon(Icons.refresh),
+          IconButton(
+            icon: const Icon(Icons.refresh, size: 20),
+            tooltip: '重新生成 UID',
+            onPressed: () => _showRefreshUidDialog(context, ref),
+          ),
         ],
       ),
-      onTap: () => _showUserUidDialog(context, ref, userUid),
+      onTap: () => _showUidInfoDialog(context, ref, userUid),
     );
   }
 
@@ -334,96 +347,23 @@ class SettingsPanel extends ConsumerWidget {
     );
   }
 
-  /// 显示用户 UID 对话框
-  void _showUserUidDialog(BuildContext context, WidgetRef ref, String currentUid) {
-    if (currentUid.isEmpty) {
-      // 首次生成
-      _showGenerateUidDialog(context, ref);
-    } else {
-      // 已有 UID，显示选项
-      _showUidOptionsDialog(context, ref, currentUid);
-    }
-  }
-
-  /// 显示生成 UID 对话框
-  void _showGenerateUidDialog(BuildContext context, WidgetRef ref) {
-    final newUid = _generateUid();
-    
+  /// 显示 UID 信息对话框
+  void _showUidInfoDialog(BuildContext context, WidgetRef ref, String currentUid) {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('生成用户标识'),
+        title: const Text('设备标识 (UID)'),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             const Text(
-              '用户标识 (UID) 用于识别你的设备组。\n'
-              '相同 UID 的设备可以互相同步数据。\n\n'
-              '请将此 UID 复制到你的其他设备上，以便它们能够互相同步。',
+              '每个设备都有唯一的 UID，用于在局域网中识别设备。\n\n'
+              '要与其他设备同步，需要将对方添加为"可信设备"。',
               style: TextStyle(fontSize: 13),
             ),
             const SizedBox(height: 16),
-            Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: Theme.of(context).colorScheme.primaryContainer,
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: Text(
-                      newUid,
-                      style: TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.bold,
-                        fontFamily: 'monospace',
-                        color: Theme.of(context).colorScheme.onPrimaryContainer,
-                      ),
-                    ),
-                  ),
-                  IconButton(
-                    icon: const Icon(Icons.copy),
-                    onPressed: () => _copyToClipboard(context, newUid),
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(),
-            child: const Text('取消'),
-          ),
-          FilledButton(
-            onPressed: () {
-              final currentSettings = ref.read(localSettingsProvider);
-              ref.read(dataProvider.notifier).updateSettings(
-                    currentSettings.copyWith(userUid: newUid),
-                  );
-              ref.read(syncProvider.notifier).updateUserSettings(newUid, currentSettings.trustedDevices);
-              Navigator.of(context).pop();
-            },
-            child: const Text('使用此 UID'),
-          ),
-        ],
-      ),
-    );
-  }
-
-  /// 显示 UID 选项对话框（已有 UID 时）
-  void _showUidOptionsDialog(BuildContext context, WidgetRef ref, String currentUid) {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('用户标识'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text('当前 UID：'),
+            const Text('本机 UID：'),
             const SizedBox(height: 8),
             Container(
               padding: const EdgeInsets.all(12),
@@ -437,7 +377,7 @@ class SettingsPanel extends ConsumerWidget {
                     child: Text(
                       currentUid,
                       style: const TextStyle(
-                        fontSize: 16,
+                        fontSize: 14,
                         fontWeight: FontWeight.bold,
                         fontFamily: 'monospace',
                       ),
@@ -450,11 +390,6 @@ class SettingsPanel extends ConsumerWidget {
                 ],
               ),
             ),
-            const SizedBox(height: 16),
-            const Text(
-              '你可以将此 UID 复制到其他设备，或输入其他设备的 UID。',
-              style: TextStyle(fontSize: 12, color: Colors.grey),
-            ),
           ],
         ),
         actions: [
@@ -462,45 +397,19 @@ class SettingsPanel extends ConsumerWidget {
             onPressed: () => Navigator.of(context).pop(),
             child: const Text('关闭'),
           ),
-          TextButton(
-            onPressed: () {
-              Navigator.of(context).pop();
-              _showInputUidDialog(context, ref, currentUid);
-            },
-            child: const Text('输入其他 UID'),
-          ),
         ],
       ),
     );
   }
 
-  /// 显示输入 UID 对话框
-  void _showInputUidDialog(BuildContext context, WidgetRef ref, String currentUid) {
-    final controller = TextEditingController();
-
+  /// 显示重新生成 UID 确认对话框
+  void _showRefreshUidDialog(BuildContext context, WidgetRef ref) {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('输入用户标识'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text(
-              '输入其他设备的 UID，以加入该设备组进行同步。',
-              style: TextStyle(fontSize: 13),
-            ),
-            const SizedBox(height: 16),
-            TextField(
-              controller: controller,
-              decoration: const InputDecoration(
-                hintText: '输入 UID',
-                border: OutlineInputBorder(),
-              ),
-              textCapitalization: TextCapitalization.characters,
-              autofocus: true,
-            ),
-          ],
+        title: const Text('重新生成 UID'),
+        content: const Text(
+          '重新生成 UID 后，其他设备需要重新将你添加为可信设备才能同步。\n\n确定要重新生成吗？',
         ),
         actions: [
           TextButton(
@@ -509,17 +418,15 @@ class SettingsPanel extends ConsumerWidget {
           ),
           FilledButton(
             onPressed: () {
-              final newUid = controller.text.trim().toUpperCase();
-              if (newUid.isNotEmpty) {
-                final currentSettings = ref.read(localSettingsProvider);
-                ref.read(dataProvider.notifier).updateSettings(
-                      currentSettings.copyWith(userUid: newUid),
-                    );
-                ref.read(syncProvider.notifier).updateUserSettings(newUid, currentSettings.trustedDevices);
-              }
+              final newUid = _generateUid();
+              final currentSettings = ref.read(localSettingsProvider);
+              ref.read(dataProvider.notifier).updateSettings(
+                    currentSettings.copyWith(userUid: newUid),
+                  );
+              ref.read(syncProvider.notifier).updateUserSettings(newUid, currentSettings.trustedDevices);
               Navigator.of(context).pop();
             },
-            child: const Text('确定'),
+            child: const Text('重新生成'),
           ),
         ],
       ),
@@ -674,15 +581,12 @@ class SettingsPanel extends ConsumerWidget {
   /// 构建单个设备项
   Widget _buildDeviceItem(BuildContext context, WidgetRef ref, DeviceInfo device, List<String> trustedDevices) {
     final isTrusted = trustedDevices.contains(device.deviceId);
-    final settings = ref.read(localSettingsProvider);
-    final isSameUid = settings.userUid.isNotEmpty && device.userUid == settings.userUid;
 
     return ListTile(
       contentPadding: const EdgeInsets.only(left: 72, right: 16),
       title: Row(
         children: [
-          Text(device.deviceName),
-          const SizedBox(width: 8),
+          Expanded(child: Text(device.deviceName)),
           if (isTrusted)
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
@@ -692,18 +596,9 @@ class SettingsPanel extends ConsumerWidget {
               ),
               child: const Text('可信', style: TextStyle(fontSize: 10, color: Colors.green)),
             ),
-          if (isSameUid && !isTrusted)
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-              decoration: BoxDecoration(
-                color: Colors.blue.withValues(alpha: 0.2),
-                borderRadius: BorderRadius.circular(4),
-              ),
-              child: const Text('同组', style: TextStyle(fontSize: 10, color: Colors.blue)),
-            ),
         ],
       ),
-      subtitle: Text('${device.address.address} · ${device.deviceId.substring(0, 8)}...'),
+      subtitle: Text('${device.address.address} · UID: ${device.userUid.isNotEmpty ? device.userUid : "未知"}'),
       trailing: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
@@ -717,9 +612,11 @@ class SettingsPanel extends ConsumerWidget {
             tooltip: isTrusted ? '移除可信' : '添加为可信设备',
             onPressed: () => _toggleTrustedDevice(ref, device.deviceId, isTrusted),
           ),
-          // 同步按钮
+          // 同步按钮（仅可信设备可用）
           FilledButton.tonal(
-            onPressed: () => ref.read(syncProvider.notifier).syncWithDevice(device),
+            onPressed: isTrusted 
+                ? () => ref.read(syncProvider.notifier).syncWithDevice(device)
+                : null,
             child: const Text('同步'),
           ),
         ],

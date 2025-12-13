@@ -314,21 +314,9 @@ class DiscoveryService {
 
       final device = DeviceInfo.fromJson(message, datagram.address);
       
-      // 检查是否允许同步：
-      // 1. 双方 UID 都为空（未配置，允许发现以便后续配置）
-      // 2. 双方 UID 相同且非空
-      // 3. 对方在可信设备列表中
-      final bothEmpty = _userUid.isEmpty && device.userUid.isEmpty;
-      final isSameUser = _userUid.isNotEmpty && device.userUid == _userUid;
-      final isTrusted = _trustedDevices.contains(deviceId);
-      
-      if (!bothEmpty && !isSameUser && !isTrusted) {
-        debugPrint('[Discovery] 设备 $deviceName 不在可信列表且 UID 不匹配，忽略');
-        debugPrint('[Discovery]   本机 UID: $_userUid, 对方 UID: ${device.userUid}');
-        return;
-      }
-      
-      debugPrint('[Discovery] ★★★ 发现可信设备: $deviceName ($deviceId) @ $sourceAddr ★★★');
+      // 发现所有设备，不做过滤（过滤在同步时进行）
+      debugPrint('[Discovery] ★★★ 发现设备: $deviceName ($deviceId) @ $sourceAddr ★★★');
+      debugPrint('[Discovery]   对方 UID: ${device.userUid}');
       
       final isNew = !_discoveredDevices.containsKey(deviceId);
       _discoveredDevices[deviceId] = device;

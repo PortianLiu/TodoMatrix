@@ -117,6 +117,12 @@ class SyncNotifier extends StateNotifier<SyncState> {
       debugPrint('[SyncProvider] 收到合并后的数据，更新本地状态');
       _ref.read(dataProvider.notifier).applySyncedData(manifest, lists);
     };
+
+    // 设备连接回调（被动方也能知道对方存在）
+    _syncService!.onDeviceConnected = (deviceId, deviceName, address) {
+      debugPrint('[SyncProvider] 被动连接，添加设备: $deviceName');
+      _discoveryService?.addDevice(deviceId, deviceName, address);
+    };
   }
 
   /// 开始监听（应用启动时调用）

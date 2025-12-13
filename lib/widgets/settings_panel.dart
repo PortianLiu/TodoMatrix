@@ -58,7 +58,8 @@ class SettingsPanel extends ConsumerWidget {
           _buildDeviceNameTile(context, ref, settings.deviceName),
           if (settings.syncEnabled) ...[
             _buildUserUidTile(context, ref, settings.userUid),
-            _buildSyncStatusTile(context, ref),
+            _buildLocalIpsTile(context, ref),
+            _buildDiscoveryTile(context, ref),
             _buildDeviceListTile(context, ref),
           ],
           const Divider(),
@@ -472,109 +473,361 @@ class SettingsPanel extends ConsumerWidget {
     );
   }
 
-  /// 构建同步状态项
-  Widget _buildSyncStatusTile(BuildContext context, WidgetRef ref) {
-    final syncState = ref.watch(syncProvider);
-    final status = syncState.status;
+  /// 构建本机IP展示项
+  Widget _buildLocalIpsTile(BuildContext context, WidgetRef ref) {
+    return FutureBuilder<List<String>>(
+      future: _getLocalBroadcastIps(),
+      builder: (context, snapshot) {
+        final ips = snapshot.data ?? [];
+        return ExpansionTile(
+          leading: const Icon(Icons.router_outlined),
+          title: const Text('本机广播地址'),
+          subtitle: Text(ips.isEmpty ? '获取中...' : '${ips.length} 个网络接口'),
+          children: [
+            if (ips.isEmpty)
+              const ListTile(
+                contentPadding: EdgeInsets.only(left: 72, right: 16),
+                title: Text('未检测到网络接口'),
+              )
+            else
+              ...ips.map((ip) => ListTile(
+                contentPadding: const EdgeInsets.only(left: 72, right: 16),
+                dense: true,
+                title: Text(ip, style: const TextStyle(fontFamily: 'monospace')),
+                trailing: IconButton(
+                  icon: const Icon(Icons.copy, size: 18),
+                  onPressed: () => _copyToClipboard(context, ip),
+                ),
+              )),
+          ],
+        );
+      },
+    );
+  }
 
-    String statusText;
-    IconData statusIcon;
-    Color? statusColor;
-    bool isAnimating = false;
-
-    switch (status) {
-      case SyncStatus.idle:
-        statusText = syncState.isListening 
-            ? '监听中 (${syncState.devices.length} 个设备在线)'
-            : '未启动';
-        statusIcon = syncState.isListening ? Icons.wifi : Icons.cloud_outlined;
-        statusColor = syncState.devices.isNotEmpty ? Colors.green : null;
-        break;
-      case SyncStatus.broadcasting:
-        statusText = '正在广播...';
-        statusIcon = Icons.sync;
-        statusColor = Colors.blue;
-        isAnimating = true;
-        break;
-      case SyncStatus.connecting:
-        statusText = syncState.message ?? '正在连接...';
-        statusIcon = Icons.sync;
-        statusColor = Colors.orange;
-        isAnimating = true;
-        break;
-      case SyncStatus.syncing:
-        statusText = syncState.message ?? '正在同步...';
-        statusIcon = Icons.sync;
-        statusColor = Colors.orange;
-        isAnimating = true;
-        break;
-      case SyncStatus.completed:
-        statusText = syncState.lastResult?.toString() ?? '同步完成';
-        statusIcon = Icons.check_circle;
-        statusColor = Colors.green;
-        break;
-      case SyncStatus.failed:
-        statusText = syncState.message ?? '同步失败';
-        statusIcon = Icons.error;
-        statusColor = Colors.red;
-        break;
+  /// 获取本机所有广播IP
+  Future<List<String>> _getLocalBroadcastIps() async {
+    final List<String> ips = [];
+    try {
+      final interfaces = await NetworkInterface.list(type: InternetAddressType.IPv4);
+      for (final interface in interfaces) {
+        final name = interface.name.toLowerCase();
+        // 跳过虚拟接口
+        if (name.contains('loopback') || 
+            name.contains('vmware') || 
+            name.contains('virtualbox') ||
+            name.contains('vbox') ||
+            name.contains('docker')) {
+          continue;
+        }
+        for (final addr in interface.addresses) {
+          ips.add('${addr.address} (${interface.name})');
+        }
+      }
+    } catch (e) {
+      debugPrint('[Settings] 获取本机IP失败: $e');
     }
+    return ips;
+  }
 
+  /// 构建设备发现项（独立于同步功能）
+  Widget _buildDiscoveryTile(BuildContext context, WidgetRef ref) {
+    final syncState = ref.watch(syncProvider);
+    final isDiscovering = syncState.status == SyncStatus.broadcasting;
+    
     return ListTile(
       leading: _SyncStatusIcon(
-        icon: statusIcon,
-        color: statusColor,
-        isAnimating: isAnimating,
+        icon: Icons.wifi_find,
+        color: isDiscovering ? Colors.blue : null,
+        isAnimating: isDiscovering,
       ),
-      title: const Text('同步状态'),
-      subtitle: Text(statusText),
+      title: const Text('设备发现'),
+      subtitle: Text(isDiscovering 
+          ? '正在搜索...' 
+          : syncState.isListening 
+              ? '点击搜索附近设备' 
+              : '未启动'),
       trailing: IconButton(
-        icon: const Icon(Icons.sync),
-        tooltip: '立即同步',
+        icon: const Icon(Icons.search),
+        tooltip: '搜索设备',
         onPressed: () async {
           final settings = ref.read(localSettingsProvider);
           final notifier = ref.read(syncProvider.notifier);
           await notifier.initialize(settings.deviceName);
-          await notifier.broadcastAndSync();
+          // 仅发起广播，不自动同步
+          await notifier.broadcastOnly();
         },
       ),
     );
   }
 
-  /// 构建设备列表项
+  /// 构建设备列表项（已发现设备 + 可信设备平级展示）
   Widget _buildDeviceListTile(BuildContext context, WidgetRef ref) {
     final devices = ref.watch(discoveredDevicesProvider);
     final settings = ref.watch(localSettingsProvider);
     final trustedDevices = settings.trustedDevices;
+    final syncState = ref.watch(syncProvider);
+    
+    // 计算在线的可信设备数
+    final onlineTrustedCount = devices.where((d) => trustedDevices.contains(d.deviceId)).length;
 
     return ExpansionTile(
       leading: const Icon(Icons.devices_other),
-      title: const Text('附近设备'),
-      subtitle: Text(devices.isEmpty 
-          ? '未发现设备' 
-          : '发现 ${devices.length} 个设备'),
-      initiallyExpanded: devices.isNotEmpty,
+      title: const Text('设备管理'),
+      subtitle: Text(_buildDeviceSubtitle(devices.length, trustedDevices.length, onlineTrustedCount)),
+      initiallyExpanded: true,
       children: [
+        // 同步状态栏
+        _buildSyncStatusBar(context, ref, syncState),
+        const Divider(height: 1, indent: 72),
+        
+        // 已发现设备区域
+        Padding(
+          padding: const EdgeInsets.only(left: 72, right: 16, top: 12, bottom: 4),
+          child: Row(
+            children: [
+              Icon(Icons.wifi, size: 16, color: Theme.of(context).colorScheme.primary),
+              const SizedBox(width: 8),
+              Text(
+                '已发现设备 (${devices.length})',
+                style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                  color: Theme.of(context).colorScheme.primary,
+                ),
+              ),
+            ],
+          ),
+        ),
         if (devices.isEmpty)
           const ListTile(
             contentPadding: EdgeInsets.only(left: 72, right: 16),
-            title: Text('未发现设备'),
-            subtitle: Text('请确保其他设备已开启同步，且 UID 相同'),
+            dense: true,
+            title: Text('未发现设备', style: TextStyle(color: Colors.grey)),
+            subtitle: Text('点击上方"搜索设备"按钮'),
           )
         else
           ...devices.map((device) => _buildDeviceItem(context, ref, device, trustedDevices)),
-        // 可信设备管理入口
-        ListTile(
-          contentPadding: const EdgeInsets.only(left: 72, right: 16),
-          leading: const Icon(Icons.verified_user_outlined, size: 20),
-          title: const Text('管理可信设备'),
-          subtitle: Text(trustedDevices.isEmpty 
-              ? '未添加可信设备' 
-              : '${trustedDevices.length} 个可信设备'),
-          trailing: const Icon(Icons.chevron_right),
-          onTap: () => _showTrustedDevicesDialog(context, ref),
+        
+        const Divider(height: 16, indent: 72),
+        
+        // 可信设备区域（显示离线的可信设备）
+        Padding(
+          padding: const EdgeInsets.only(left: 72, right: 16, top: 4, bottom: 4),
+          child: Row(
+            children: [
+              Icon(Icons.verified_user, size: 16, color: Colors.green.shade600),
+              const SizedBox(width: 8),
+              Text(
+                '可信设备 (${trustedDevices.length})',
+                style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                  color: Colors.green.shade600,
+                ),
+              ),
+              const Spacer(),
+              TextButton.icon(
+                icon: const Icon(Icons.person_add_outlined, size: 16),
+                label: const Text('添加'),
+                style: TextButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(horizontal: 8),
+                  minimumSize: Size.zero,
+                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                ),
+                onPressed: () => _showAddTrustedDeviceDialog(context, ref),
+              ),
+            ],
+          ),
         ),
+        if (trustedDevices.isEmpty)
+          const ListTile(
+            contentPadding: EdgeInsets.only(left: 72, right: 16),
+            dense: true,
+            title: Text('未添加可信设备', style: TextStyle(color: Colors.grey)),
+            subtitle: Text('只有可信设备之间才能同步数据'),
+          )
+        else
+          ...trustedDevices.map((deviceId) {
+            // 查找是否在线
+            final onlineDevice = devices.where((d) => d.deviceId == deviceId).firstOrNull;
+            return _buildTrustedDeviceItem(context, ref, deviceId, onlineDevice);
+          }),
+        
+        const SizedBox(height: 8),
       ],
+    );
+  }
+
+  /// 构建设备副标题
+  String _buildDeviceSubtitle(int discoveredCount, int trustedCount, int onlineTrustedCount) {
+    if (trustedCount == 0) {
+      return discoveredCount == 0 ? '未发现设备' : '发现 $discoveredCount 个设备';
+    }
+    return '$onlineTrustedCount/$trustedCount 个可信设备在线';
+  }
+
+  /// 构建同步状态栏
+  Widget _buildSyncStatusBar(BuildContext context, WidgetRef ref, SyncState syncState) {
+    final status = syncState.status;
+    
+    String statusText;
+    Color statusColor;
+    bool showSyncButton = true;
+    bool isAnimating = false;
+
+    switch (status) {
+      case SyncStatus.idle:
+        statusText = syncState.isListening ? '就绪' : '未启动';
+        statusColor = syncState.devices.isNotEmpty ? Colors.green : Colors.grey;
+        break;
+      case SyncStatus.broadcasting:
+        statusText = '正在搜索...';
+        statusColor = Colors.blue;
+        isAnimating = true;
+        showSyncButton = false;
+        break;
+      case SyncStatus.connecting:
+        statusText = syncState.message ?? '正在连接...';
+        statusColor = Colors.orange;
+        isAnimating = true;
+        showSyncButton = false;
+        break;
+      case SyncStatus.syncing:
+        statusText = syncState.message ?? '正在同步...';
+        statusColor = Colors.orange;
+        isAnimating = true;
+        showSyncButton = false;
+        break;
+      case SyncStatus.completed:
+        statusText = '同步完成';
+        statusColor = Colors.green;
+        break;
+      case SyncStatus.failed:
+        statusText = syncState.message ?? '同步失败';
+        statusColor = Colors.red;
+        break;
+    }
+
+    return ListTile(
+      contentPadding: const EdgeInsets.only(left: 72, right: 16),
+      dense: true,
+      leading: _SyncStatusIcon(
+        icon: isAnimating ? Icons.sync : (status == SyncStatus.completed ? Icons.check_circle : Icons.circle),
+        color: statusColor,
+        isAnimating: isAnimating,
+      ),
+      title: Text(statusText),
+      trailing: showSyncButton
+          ? FilledButton.tonal(
+              onPressed: () async {
+                final settings = ref.read(localSettingsProvider);
+                final notifier = ref.read(syncProvider.notifier);
+                await notifier.initialize(settings.deviceName);
+                await notifier.syncWithTrustedDevices();
+              },
+              child: const Text('立即同步'),
+            )
+          : null,
+    );
+  }
+
+  /// 构建可信设备项（平级展示）
+  Widget _buildTrustedDeviceItem(BuildContext context, WidgetRef ref, String deviceId, DeviceInfo? onlineDevice) {
+    final isOnline = onlineDevice != null;
+    
+    return ListTile(
+      contentPadding: const EdgeInsets.only(left: 72, right: 16),
+      dense: true,
+      leading: Icon(
+        isOnline ? Icons.check_circle : Icons.circle_outlined,
+        size: 20,
+        color: isOnline ? Colors.green : Colors.grey,
+      ),
+      title: Text(
+        isOnline ? onlineDevice.deviceName : '设备 ${deviceId.substring(0, 8)}...',
+        style: TextStyle(color: isOnline ? null : Colors.grey),
+      ),
+      subtitle: Text(
+        isOnline 
+            ? '${onlineDevice.address.address} · 在线'
+            : '离线',
+        style: TextStyle(fontSize: 12, color: isOnline ? null : Colors.grey),
+      ),
+      trailing: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (isOnline)
+            FilledButton.tonal(
+              onPressed: () => ref.read(syncProvider.notifier).syncWithDevice(onlineDevice),
+              child: const Text('同步'),
+            ),
+          IconButton(
+            icon: const Icon(Icons.delete_outline, size: 20),
+            tooltip: '移除可信设备',
+            onPressed: () => _toggleTrustedDevice(ref, deviceId, true),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// 显示添加可信设备对话框
+  void _showAddTrustedDeviceDialog(BuildContext context, WidgetRef ref) {
+    final devices = ref.read(discoveredDevicesProvider);
+    final settings = ref.read(localSettingsProvider);
+    final trustedDevices = settings.trustedDevices;
+    
+    // 过滤出未添加为可信的已发现设备
+    final untrustedDevices = devices.where((d) => !trustedDevices.contains(d.deviceId)).toList();
+    
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('添加可信设备'),
+        content: SizedBox(
+          width: 350,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                '从已发现的设备中选择，或手动输入设备ID。\n只有可信设备之间才能同步数据。',
+                style: TextStyle(fontSize: 12, color: Colors.grey),
+              ),
+              const SizedBox(height: 16),
+              if (untrustedDevices.isNotEmpty) ...[
+                const Text('已发现的设备：', style: TextStyle(fontWeight: FontWeight.bold)),
+                const SizedBox(height: 8),
+                ...untrustedDevices.map((device) => ListTile(
+                  dense: true,
+                  contentPadding: EdgeInsets.zero,
+                  title: Text(device.deviceName),
+                  subtitle: Text('ID: ${device.deviceId.substring(0, 16)}...'),
+                  trailing: FilledButton.tonal(
+                    onPressed: () {
+                      _toggleTrustedDevice(ref, device.deviceId, false);
+                      Navigator.of(context).pop();
+                    },
+                    child: const Text('添加'),
+                  ),
+                )),
+                const Divider(),
+              ],
+              const Text('手动输入设备ID：', style: TextStyle(fontWeight: FontWeight.bold)),
+              const SizedBox(height: 8),
+              _ManualDeviceIdInput(
+                onAdd: (deviceId) {
+                  _toggleTrustedDevice(ref, deviceId, false);
+                  Navigator.of(context).pop();
+                },
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('关闭'),
+          ),
+        ],
+      ),
     );
   }
 
@@ -641,62 +894,7 @@ class SettingsPanel extends ConsumerWidget {
     ref.read(syncProvider.notifier).updateUserSettings(settings.userUid, newTrustedDevices);
   }
 
-  /// 显示可信设备管理对话框
-  void _showTrustedDevicesDialog(BuildContext context, WidgetRef ref) {
-    final settings = ref.watch(localSettingsProvider);
-    final trustedDevices = settings.trustedDevices;
 
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('可信设备'),
-        content: SizedBox(
-          width: 300,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Text(
-                '可信设备可以绕过 UID 检查直接同步。\n'
-                '适用于无法设置相同 UID 的情况。',
-                style: TextStyle(fontSize: 12, color: Colors.grey),
-              ),
-              const SizedBox(height: 16),
-              if (trustedDevices.isEmpty)
-                const Padding(
-                  padding: EdgeInsets.all(16),
-                  child: Center(
-                    child: Text('暂无可信设备', style: TextStyle(color: Colors.grey)),
-                  ),
-                )
-              else
-                ...trustedDevices.map((deviceId) => ListTile(
-                  dense: true,
-                  title: Text(
-                    deviceId,
-                    style: const TextStyle(fontFamily: 'monospace', fontSize: 12),
-                  ),
-                  trailing: IconButton(
-                    icon: const Icon(Icons.delete_outline, size: 20),
-                    onPressed: () {
-                      _toggleTrustedDevice(ref, deviceId, true);
-                      Navigator.of(context).pop();
-                      _showTrustedDevicesDialog(context, ref);
-                    },
-                  ),
-                )),
-            ],
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(),
-            child: const Text('关闭'),
-          ),
-        ],
-      ),
-    );
-  }
 
   /// 构建钉在桌面设置项
   Widget _buildPinToDesktopTile(BuildContext context, WidgetRef ref, bool enabled) {
@@ -1140,6 +1338,73 @@ class _SyncStatusIconState extends State<_SyncStatusIcon>
           child: Icon(widget.icon, color: widget.color),
         );
       },
+    );
+  }
+}
+
+/// 手动输入设备ID组件
+class _ManualDeviceIdInput extends StatefulWidget {
+  final void Function(String deviceId) onAdd;
+
+  const _ManualDeviceIdInput({required this.onAdd});
+
+  @override
+  State<_ManualDeviceIdInput> createState() => _ManualDeviceIdInputState();
+}
+
+class _ManualDeviceIdInputState extends State<_ManualDeviceIdInput> {
+  final _controller = TextEditingController();
+  String? _errorText;
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  void _handleAdd() {
+    final deviceId = _controller.text.trim();
+    if (deviceId.isEmpty) {
+      setState(() => _errorText = '请输入设备ID');
+      return;
+    }
+    // 简单验证：至少8个字符
+    if (deviceId.length < 8) {
+      setState(() => _errorText = '设备ID格式不正确');
+      return;
+    }
+    widget.onAdd(deviceId);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Expanded(
+          child: TextField(
+            controller: _controller,
+            decoration: InputDecoration(
+              hintText: '粘贴设备ID',
+              errorText: _errorText,
+              isDense: true,
+              border: const OutlineInputBorder(),
+              contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            ),
+            style: const TextStyle(fontFamily: 'monospace', fontSize: 12),
+            onChanged: (_) {
+              if (_errorText != null) {
+                setState(() => _errorText = null);
+              }
+            },
+            onSubmitted: (_) => _handleAdd(),
+          ),
+        ),
+        const SizedBox(width: 8),
+        FilledButton(
+          onPressed: _handleAdd,
+          child: const Text('添加'),
+        ),
+      ],
     );
   }
 }

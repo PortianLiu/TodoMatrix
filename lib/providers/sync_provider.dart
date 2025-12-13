@@ -209,6 +209,86 @@ class SyncNotifier extends StateNotifier<SyncState> {
     });
   }
 
+  /// 仅发起广播（不自动同步，用于设备发现）
+  Future<void> broadcastOnly() async {
+    if (_discoveryService == null) {
+      debugPrint('[SyncProvider] 服务未初始化');
+      return;
+    }
+
+    // 如果正在同步或广播，忽略
+    if (state.status == SyncStatus.syncing || 
+        state.status == SyncStatus.connecting ||
+        state.status == SyncStatus.broadcasting) {
+      debugPrint('[SyncProvider] 正在忙碌中，忽略广播请求');
+      return;
+    }
+
+    debugPrint('[SyncProvider] 仅发起广播（设备发现）...');
+    
+    // 设置广播状态
+    state = state.copyWith(status: SyncStatus.broadcasting);
+    
+    // 确保监听已启动
+    if (!state.isListening) {
+      await startListening();
+    }
+    
+    // 发送广播
+    await _discoveryService!.broadcastPresence();
+    
+    // 2秒后结束广播动画（不触发同步）
+    _broadcastAnimationTimer?.cancel();
+    _broadcastAnimationTimer = Timer(const Duration(milliseconds: 2000), () {
+      if (state.status == SyncStatus.broadcasting) {
+        state = state.copyWith(status: SyncStatus.idle);
+      }
+    });
+  }
+
+  /// 仅与可信设备同步（不发送广播）
+  Future<void> syncWithTrustedDevices() async {
+    if (state.devices.isEmpty) {
+      debugPrint('[SyncProvider] 没有已发现的设备');
+      return;
+    }
+    
+    // 如果正在同步，忽略
+    if (state.status == SyncStatus.syncing || 
+        state.status == SyncStatus.connecting) {
+      debugPrint('[SyncProvider] 正在同步中，忽略请求');
+      return;
+    }
+
+    final settings = _ref.read(localSettingsProvider);
+    final trustedDevices = settings.trustedDevices;
+    
+    // 过滤出可信设备
+    final trustedList = state.devices.where((d) => trustedDevices.contains(d.deviceId)).toList();
+    
+    if (trustedList.isEmpty) {
+      debugPrint('[SyncProvider] 没有在线的可信设备');
+      state = state.copyWith(
+        status: SyncStatus.failed,
+        message: '没有在线的可信设备',
+      );
+      // 3秒后恢复
+      Future.delayed(const Duration(seconds: 3), () {
+        if (state.status == SyncStatus.failed) {
+          state = state.copyWith(status: SyncStatus.idle, clearMessage: true);
+        }
+      });
+      return;
+    }
+    
+    debugPrint('[SyncProvider] 与可信设备同步，设备数: ${trustedList.length}');
+    
+    for (final device in trustedList) {
+      debugPrint('[SyncProvider] 同步设备: ${device.deviceName} @ ${device.address.address}');
+      await syncWithDevice(device);
+    }
+  }
+
   /// 自动与发现的设备同步（仅同步可信设备）
   Future<void> _autoSyncWithDevices(List<DeviceInfo> devices) async {
     if (devices.isEmpty) return;
@@ -319,11 +399,15 @@ class SyncNotifier extends StateNotifier<SyncState> {
   void onDataChanged() {
     // 如果同步未启用或没有设备，忽略
     final settings = _ref.read(localSettingsProvider);
-    if (!settings.syncEnabled || state.devices.isEmpty) return;
+    if (!settings.syncEnabled || state.devices.isEmpty) {
+      return;
+    }
     
     // 如果正在同步，忽略
     if (state.status == SyncStatus.syncing || 
-        state.status == SyncStatus.connecting) return;
+        state.status == SyncStatus.connecting) {
+      return;
+    }
 
     // 防抖：3 秒内的多次变更只触发一次同步
     _dataSyncDebounceTimer?.cancel();
@@ -335,11 +419,15 @@ class SyncNotifier extends StateNotifier<SyncState> {
 
   /// 仅与已发现的设备同步（不发送广播）
   Future<void> _syncWithExistingDevices() async {
-    if (state.devices.isEmpty) return;
+    if (state.devices.isEmpty) {
+      return;
+    }
     
     // 如果正在同步，忽略
     if (state.status == SyncStatus.syncing || 
-        state.status == SyncStatus.connecting) return;
+        state.status == SyncStatus.connecting) {
+      return;
+    }
 
     debugPrint('[SyncProvider] 与已发现设备同步，设备数: ${state.devices.length}');
     

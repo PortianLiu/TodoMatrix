@@ -182,10 +182,13 @@ class SyncService {
     _server = null;
   }
 
+  /// 连接成功回调（用于通知发现服务添加设备）
+  void Function(String deviceId, String deviceName, InternetAddress address)? onDeviceConnected;
+
   /// 处理传入连接
   void _handleIncomingConnection(Socket socket) async {
     _activeConnection = socket;
-    _emitEvent(SyncEventType.connected, message: '收到同步请求');
+    _emitEvent(SyncEventType.connected, message: '收到来自 ${socket.remoteAddress.address} 的同步请求');
 
     try {
       await _handleSyncSession(socket, isInitiator: false);
@@ -236,19 +239,53 @@ class SyncService {
     _emitEvent(SyncEventType.exchangingData, message: '正在交换数据...');
 
     try {
+      // 收集接收到的数据
+      final buffer = StringBuffer();
+      final completer = Completer<String>();
+      
+      // 监听数据
+      final subscription = socket
+          .cast<List<int>>()
+          .transform(utf8.decoder)
+          .listen(
+        (data) {
+          buffer.write(data);
+          // 检查是否收到完整的一行（以换行符结尾）
+          final content = buffer.toString();
+          if (content.contains('\n')) {
+            final line = content.split('\n').first;
+            if (!completer.isCompleted) {
+              completer.complete(line);
+            }
+          }
+        },
+        onError: (e) {
+          if (!completer.isCompleted) {
+            completer.completeError(e);
+          }
+        },
+        onDone: () {
+          // 连接关闭时，如果还没完成，检查缓冲区
+          if (!completer.isCompleted) {
+            final content = buffer.toString().trim();
+            if (content.isNotEmpty) {
+              completer.complete(content);
+            } else {
+              completer.completeError('连接已关闭，未收到数据');
+            }
+          }
+        },
+      );
+
       // 发送本地数据
       final localJson = jsonEncode(localPacket.toJson());
       socket.write('$localJson\n');
       await socket.flush();
       debugPrint('[SyncService] 已发送本地数据，${localPacket.lists.length} 个列表');
 
-      // 接收远程数据
-      final remoteDataStr = await socket
-          .cast<List<int>>()
-          .transform(utf8.decoder)
-          .transform(const LineSplitter())
-          .first
-          .timeout(connectionTimeout);
+      // 等待接收远程数据
+      final remoteDataStr = await completer.future.timeout(connectionTimeout);
+      await subscription.cancel();
 
       debugPrint('[SyncService] 收到远程数据: ${remoteDataStr.length} 字节');
 
@@ -260,6 +297,15 @@ class SyncService {
 
       final remotePacket = SyncDataPacket.fromJson(remoteMessage);
       debugPrint('[SyncService] 解析远程数据成功，${remotePacket.lists.length} 个列表');
+
+      // 通知发现服务添加/更新设备（被动方也能知道对方存在）
+      if (!isInitiator && socket.remoteAddress != null) {
+        onDeviceConnected?.call(
+          remotePacket.deviceId,
+          remotePacket.deviceId, // 使用 deviceId 作为名称（实际名称在广播中）
+          socket.remoteAddress,
+        );
+      }
 
       // 合并数据
       final mergeResult = _mergeData(localPacket, remotePacket);

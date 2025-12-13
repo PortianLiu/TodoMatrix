@@ -87,6 +87,30 @@ class DiscoveryService {
     }
   }
 
+  /// 手动添加设备（被动接收连接时调用）
+  void addDevice(String deviceId, String deviceName, InternetAddress address) {
+    if (deviceId == _deviceId) return; // 忽略自己
+    
+    final device = DeviceInfo(
+      deviceId: deviceId,
+      deviceName: deviceName,
+      version: _version,
+      address: address,
+      port: syncPort,
+      lastSeen: DateTime.now(),
+    );
+    
+    final isNew = !_discoveredDevices.containsKey(deviceId);
+    _discoveredDevices[deviceId] = device;
+    
+    if (isNew) {
+      debugPrint('[Discovery] 手动添加设备: $deviceName @ ${address.address}');
+    } else {
+      debugPrint('[Discovery] 更新设备: $deviceName');
+    }
+    _notifyDevicesChanged();
+  }
+
   DiscoveryService({
     String? deviceId,
     required String deviceName,

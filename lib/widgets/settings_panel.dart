@@ -842,13 +842,31 @@ class _SyncStatusIconState extends State<_SyncStatusIcon>
 
   @override
   Widget build(BuildContext context) {
+    // 同步图标需要水平翻转以适应旋转方向
+    final needsFlip = widget.icon == Icons.sync;
+    
     if (!widget.isAnimating) {
+      if (needsFlip) {
+        return Transform.scale(
+          scaleX: -1,
+          child: Icon(widget.icon, color: widget.color),
+        );
+      }
       return Icon(widget.icon, color: widget.color);
     }
 
     return AnimatedBuilder(
       animation: _controller,
       builder: (context, child) {
+        if (needsFlip) {
+          return Transform(
+            alignment: Alignment.center,
+            transform: Matrix4.identity()
+              ..scale(-1.0, 1.0)
+              ..rotateZ(_controller.value * 2 * 3.14159),
+            child: Icon(widget.icon, color: widget.color),
+          );
+        }
         return Transform.rotate(
           angle: _controller.value * 2 * 3.14159,
           child: Icon(widget.icon, color: widget.color),

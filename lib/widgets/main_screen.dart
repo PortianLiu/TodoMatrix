@@ -602,8 +602,12 @@ class _SyncIconButtonState extends State<_SyncIconButton>
       icon: AnimatedBuilder(
         animation: _controller,
         builder: (context, child) {
-          return Transform.rotate(
-            angle: _controller.value * 2 * math.pi,
+          return Transform(
+            alignment: Alignment.center,
+            // 水平翻转图标，使旋转方向与图标箭头方向一致
+            transform: Matrix4.identity()
+              ..scale(-1.0, 1.0) // 水平翻转
+              ..rotateZ(_controller.value * 2 * math.pi), // 旋转
             child: Icon(
               Icons.sync,
               size: widget.iconSize,

@@ -576,7 +576,7 @@ class SettingsPanel extends ConsumerWidget {
           await notifier.broadcastOnly();
         },
       ),
-      initiallyExpanded: devices.isNotEmpty,
+      initiallyExpanded: true,
       children: [
         if (devices.isEmpty)
           const ListTile(
@@ -597,12 +597,17 @@ class SettingsPanel extends ConsumerWidget {
 
     return ListTile(
       contentPadding: const EdgeInsets.only(left: 72, right: 16),
-      dense: true,
       title: Row(
         children: [
-          Expanded(child: Text(device.deviceName)),
+          Expanded(
+            child: Text(
+              device.deviceName,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
           if (isTrusted)
             Container(
+              margin: const EdgeInsets.only(left: 8),
               padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
               decoration: BoxDecoration(
                 color: Colors.green.withValues(alpha: 0.2),
@@ -612,13 +617,15 @@ class SettingsPanel extends ConsumerWidget {
             ),
         ],
       ),
-      subtitle: Text('${device.address.address} · ID: ${device.deviceId.substring(0, 8)}...'),
+      subtitle: Text(
+        '${device.address.address} · ID: ${device.deviceId.length > 12 ? '${device.deviceId.substring(0, 12)}...' : device.deviceId}',
+        overflow: TextOverflow.ellipsis,
+      ),
       trailing: isTrusted
           ? null
-          : IconButton(
-              icon: const Icon(Icons.person_add_outlined, size: 20),
-              tooltip: '添加为可信设备',
+          : TextButton(
               onPressed: () => _toggleTrustedDevice(ref, device.deviceId, false),
+              child: const Text('添加'),
             ),
     );
   }
@@ -645,21 +652,12 @@ class SettingsPanel extends ConsumerWidget {
         mainAxisSize: MainAxisSize.min,
         children: [
           // 添加按钮
-          IconButton(
-            icon: const Icon(Icons.person_add_outlined),
-            tooltip: '添加可信设备',
+          TextButton(
             onPressed: () => _showAddTrustedDeviceDialog(context, ref),
+            child: const Text('添加'),
           ),
           // 立即同步按钮
-          IconButton(
-            icon: isSyncing 
-                ? const SizedBox(
-                    width: 20,
-                    height: 20,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  )
-                : const Icon(Icons.sync),
-            tooltip: '立即同步所有可信设备',
+          TextButton(
             onPressed: isSyncing 
                 ? null 
                 : () async {
@@ -668,6 +666,13 @@ class SettingsPanel extends ConsumerWidget {
                     await notifier.initialize(settings.deviceName);
                     await notifier.syncWithTrustedDevices();
                   },
+            child: isSyncing 
+                ? const SizedBox(
+                    width: 16,
+                    height: 16,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Text('同步'),
           ),
         ],
       ),

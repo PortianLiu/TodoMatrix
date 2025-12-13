@@ -209,14 +209,25 @@ class SyncNotifier extends StateNotifier<SyncState> {
     });
   }
 
-  /// 自动与发现的设备同步
+  /// 自动与发现的设备同步（仅同步可信设备）
   Future<void> _autoSyncWithDevices(List<DeviceInfo> devices) async {
     if (devices.isEmpty) return;
     
-    debugPrint('[SyncProvider] 自动同步，设备数: ${devices.length}');
+    final settings = _ref.read(localSettingsProvider);
+    final trustedDevices = settings.trustedDevices;
     
-    // 与所有设备同步（按顺序）
-    for (final device in devices) {
+    // 过滤出可信设备
+    final trustedList = devices.where((d) => trustedDevices.contains(d.deviceId)).toList();
+    
+    if (trustedList.isEmpty) {
+      debugPrint('[SyncProvider] 没有可信设备，跳过同步');
+      return;
+    }
+    
+    debugPrint('[SyncProvider] 自动同步，可信设备数: ${trustedList.length}');
+    
+    // 与可信设备同步（按顺序）
+    for (final device in trustedList) {
       debugPrint('[SyncProvider] 同步设备: ${device.deviceName} @ ${device.address.address}');
       await syncWithDevice(device);
     }

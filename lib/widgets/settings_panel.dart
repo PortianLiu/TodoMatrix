@@ -555,10 +555,9 @@ class SettingsPanel extends ConsumerWidget {
     final isDiscovering = syncState.status == SyncStatus.broadcasting;
     
     return ExpansionTile(
-      leading: _SyncStatusIcon(
-        icon: Icons.wifi_find,
+      leading: Icon(
+        Icons.wifi_find,
         color: isDiscovering ? Colors.blue : (devices.isNotEmpty ? Colors.green : null),
-        isAnimating: isDiscovering,
       ),
       title: const Text('设备发现'),
       subtitle: Text(isDiscovering 
@@ -566,16 +565,22 @@ class SettingsPanel extends ConsumerWidget {
           : devices.isEmpty 
               ? '未发现设备' 
               : '发现 ${devices.length} 个设备'),
-      trailing: IconButton(
-        icon: const Icon(Icons.search),
-        tooltip: '搜索设备',
-        onPressed: () async {
-          final settings = ref.read(localSettingsProvider);
-          final notifier = ref.read(syncProvider.notifier);
-          await notifier.initialize(settings.deviceName);
-          await notifier.broadcastOnly();
-        },
-      ),
+      trailing: isDiscovering
+          ? const SizedBox(
+              width: 24,
+              height: 24,
+              child: CircularProgressIndicator(strokeWidth: 2),
+            )
+          : IconButton(
+              icon: const Icon(Icons.search),
+              tooltip: '搜索设备',
+              onPressed: () async {
+                final settings = ref.read(localSettingsProvider);
+                final notifier = ref.read(syncProvider.notifier);
+                await notifier.initialize(settings.deviceName);
+                await notifier.broadcastOnly();
+              },
+            ),
       initiallyExpanded: true,
       children: [
         if (devices.isEmpty)
@@ -593,7 +598,8 @@ class SettingsPanel extends ConsumerWidget {
 
   /// 构建已发现设备项（仅显示添加可信按钮）
   Widget _buildDiscoveredDeviceItem(BuildContext context, WidgetRef ref, DeviceInfo device, List<String> trustedDevices) {
-    final isTrusted = trustedDevices.contains(device.deviceId);
+    // 使用 userUid 判断是否为可信设备
+    final isTrusted = device.userUid.isNotEmpty && trustedDevices.contains(device.userUid);
 
     return ListTile(
       contentPadding: const EdgeInsets.only(left: 72, right: 16),
@@ -618,14 +624,17 @@ class SettingsPanel extends ConsumerWidget {
         ],
       ),
       subtitle: Text(
-        '${device.address.address} · ID: ${device.deviceId.length > 12 ? '${device.deviceId.substring(0, 12)}...' : device.deviceId}',
+        '${device.address.address} · UID: ${device.userUid.isNotEmpty ? (device.userUid.length > 12 ? '${device.userUid.substring(0, 12)}...' : device.userUid) : '未知'}',
         overflow: TextOverflow.ellipsis,
       ),
       trailing: isTrusted
           ? null
           : TextButton(
-              onPressed: () => _toggleTrustedDevice(ref, device.deviceId, false),
-              child: const Text('添加'),
+              // 使用 userUid 添加可信设备（如果没有 userUid 则不能添加）
+              onPressed: device.userUid.isNotEmpty 
+                  ? () => _toggleTrustedDevice(ref, device.userUid, false)
+                  : null,
+              child: Text(device.userUid.isEmpty ? 'UID未知' : '添加'),
             ),
     );
   }
@@ -637,8 +646,10 @@ class SettingsPanel extends ConsumerWidget {
     final trustedDevices = settings.trustedDevices;
     final syncState = ref.watch(syncProvider);
     
-    // 计算在线的可信设备数
-    final onlineTrustedCount = devices.where((d) => trustedDevices.contains(d.deviceId)).length;
+    // 计算在线的可信设备数（使用 userUid 匹配）
+    final onlineTrustedCount = devices.where((d) => 
+        d.userUid.isNotEmpty && trustedDevices.contains(d.userUid)
+    ).length;
     
     // 判断是否正在同步
     final isSyncing = syncState.status == SyncStatus.syncing || 
@@ -690,9 +701,10 @@ class SettingsPanel extends ConsumerWidget {
             subtitle: Text('从"设备发现"中添加，或手动输入设备ID'),
           )
         else
-          ...trustedDevices.map((deviceId) {
-            final onlineDevice = devices.where((d) => d.deviceId == deviceId).firstOrNull;
-            return _buildTrustedDeviceItem(context, ref, deviceId, onlineDevice);
+          ...trustedDevices.map((userUid) {
+            // 使用 userUid 匹配在线设备
+            final onlineDevice = devices.where((d) => d.userUid == userUid).firstOrNull;
+            return _buildTrustedDeviceItem(context, ref, userUid, onlineDevice);
           }),
         
         const SizedBox(height: 8),
@@ -769,19 +781,19 @@ class SettingsPanel extends ConsumerWidget {
   }
 
   /// 构建可信设备项（平级展示）
-  Widget _buildTrustedDeviceItem(BuildContext context, WidgetRef ref, String deviceId, DeviceInfo? onlineDevice) {
+  /// userUid: 可信设备的 UID
+  Widget _buildTrustedDeviceItem(BuildContext context, WidgetRef ref, String userUid, DeviceInfo? onlineDevice) {
     final isOnline = onlineDevice != null;
     
     return ListTile(
       contentPadding: const EdgeInsets.only(left: 72, right: 16),
-      dense: true,
       leading: Icon(
         isOnline ? Icons.check_circle : Icons.circle_outlined,
         size: 20,
         color: isOnline ? Colors.green : Colors.grey,
       ),
       title: Text(
-        isOnline ? onlineDevice.deviceName : '设备 ${deviceId.substring(0, 8)}...',
+        isOnline ? onlineDevice.deviceName : 'UID: ${userUid.length > 12 ? '${userUid.substring(0, 12)}...' : userUid}',
         style: TextStyle(color: isOnline ? null : Colors.grey),
       ),
       subtitle: Text(
@@ -794,14 +806,14 @@ class SettingsPanel extends ConsumerWidget {
         mainAxisSize: MainAxisSize.min,
         children: [
           if (isOnline)
-            FilledButton.tonal(
+            TextButton(
               onPressed: () => ref.read(syncProvider.notifier).syncWithDevice(onlineDevice),
               child: const Text('同步'),
             ),
           IconButton(
             icon: const Icon(Icons.delete_outline, size: 20),
             tooltip: '移除可信设备',
-            onPressed: () => _toggleTrustedDevice(ref, deviceId, true),
+            onPressed: () => _toggleTrustedDevice(ref, userUid, true),
           ),
         ],
       ),

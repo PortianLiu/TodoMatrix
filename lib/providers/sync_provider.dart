@@ -263,8 +263,10 @@ class SyncNotifier extends StateNotifier<SyncState> {
     final settings = _ref.read(localSettingsProvider);
     final trustedDevices = settings.trustedDevices;
     
-    // 过滤出可信设备
-    final trustedList = state.devices.where((d) => trustedDevices.contains(d.deviceId)).toList();
+    // 过滤出可信设备（使用 userUid 匹配）
+    final trustedList = state.devices.where((d) => 
+        d.userUid.isNotEmpty && trustedDevices.contains(d.userUid)
+    ).toList();
     
     if (trustedList.isEmpty) {
       debugPrint('[SyncProvider] 没有在线的可信设备');
@@ -296,8 +298,10 @@ class SyncNotifier extends StateNotifier<SyncState> {
     final settings = _ref.read(localSettingsProvider);
     final trustedDevices = settings.trustedDevices;
     
-    // 过滤出可信设备
-    final trustedList = devices.where((d) => trustedDevices.contains(d.deviceId)).toList();
+    // 过滤出可信设备（使用 userUid 匹配）
+    final trustedList = devices.where((d) => 
+        d.userUid.isNotEmpty && trustedDevices.contains(d.userUid)
+    ).toList();
     
     if (trustedList.isEmpty) {
       debugPrint('[SyncProvider] 没有可信设备，跳过同步');
@@ -356,7 +360,8 @@ class SyncNotifier extends StateNotifier<SyncState> {
             event.message != null && 
             event.message!.contains('连接失败')) {
           debugPrint('[SyncProvider] 连接失败，移除设备: ${_currentSyncDevice!.deviceName}');
-          _discoveryService?.removeDevice(_currentSyncDevice!.deviceId);
+          // 使用 uniqueId（优先 userUid）移除设备
+          _discoveryService?.removeDevice(_currentSyncDevice!.uniqueId);
         }
         _currentSyncDevice = null;
         

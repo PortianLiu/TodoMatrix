@@ -59,7 +59,8 @@ class DiscoveryService {
   static const int discoveryPort = 45678;
   static const int syncPort = 45679;
   static const Duration broadcastInterval = Duration(seconds: 5);
-  static const Duration deviceTimeout = Duration(seconds: 15);
+  // 设备超时时间延长到 5 分钟，因为我们不再定期广播
+  static const Duration deviceTimeout = Duration(minutes: 5);
 
   final String _deviceId;
   final String _deviceName;
@@ -77,6 +78,22 @@ class DiscoveryService {
 
   /// 当前发现的设备列表
   List<DeviceInfo> get devices => _discoveredDevices.values.toList();
+
+  /// 刷新设备的最后在线时间（同步成功后调用）
+  void refreshDeviceLastSeen(String deviceId) {
+    final device = _discoveredDevices[deviceId];
+    if (device != null) {
+      _discoveredDevices[deviceId] = DeviceInfo(
+        deviceId: device.deviceId,
+        deviceName: device.deviceName,
+        version: device.version,
+        address: device.address,
+        port: device.port,
+        lastSeen: DateTime.now(),
+      );
+      debugPrint('[Discovery] 刷新设备在线时间: ${device.deviceName}');
+    }
+  }
 
   DiscoveryService({
     String? deviceId,

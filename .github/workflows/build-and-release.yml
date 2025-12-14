@@ -53,7 +53,7 @@ jobs:
 
       # 步骤5：构建Android Release APK
       - name: Build Android Release APK
-        run: flutter build apk --release --split-per-abi  # 可选：拆分ABI，也可去掉--split-per-abi
+        run: flutter build apk --release
 
       # 步骤6：安装7-Zip（压缩Windows Release用）和Inno Setup（打包用）
       - name: Install 7-Zip and Inno Setup

@@ -1,5 +1,5 @@
 # 仅需修改这2个变量！路径含空格直接写，PowerShell自动兼容
-$APP_VERSION = "2.1.6"
+$APP_VERSION = "2.1.7"
 $INNO_SCRIPT = "TodoMatrix.iss"
 
 # ===================== 核心构建步骤 =====================

@@ -1,6 +1,6 @@
 @echo off
 :: 仅需改这2个变量！路径含空格必须用双引号包裹
-set APP_VERSION=2.1.6
+set APP_VERSION=2.1.7
 set INNO_SCRIPT="TodoMatrix.iss"
 
 :: 1. 清理

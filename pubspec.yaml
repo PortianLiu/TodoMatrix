@@ -2,7 +2,7 @@ name: todo_matrix
 description: "TodoMatrix - 跨平台待办事项管理软件"
 publish_to: 'none'
 
-version: 2.1.1+1
+version: 2.1.2+1
 
 environment:
   sdk: ^3.8.1
@@ -55,6 +55,17 @@ dev_dependencies:
 
   # 属性测试 (使用 kiri_check)
   kiri_check: ^1.3.0
+
+  # 应用图标生成
+  flutter_launcher_icons: ^0.14.3
+
+# 应用图标配置
+flutter_launcher_icons:
+  android: true
+  ios: false
+  image_path: "assets/icon/app_icon.png"
+  adaptive_icon_background: "#FFFFFF"
+  adaptive_icon_foreground: "assets/icon/app_icon.png"
 
 flutter:
   uses-material-design: true

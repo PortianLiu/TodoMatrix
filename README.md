@@ -1,31 +1,26 @@
 # Todo Matrix
 
-一个基于四象限法则的待办事项管理应用，支持 Windows 和 Android 平台，具备局域网多设备同步功能。
+一个双端待办事项管理应用，支持 Windows 和 Android 平台，具备局域网多设备同步功能。
 
 ## 功能特性
 
-- **四象限管理** - 按重要/紧急程度分类待办事项
-- **多列表支持** - 自定义待办列表，支持拖拽排序
+- **多列表支持** - 自定义待办列表，可以使用成四象限待办
 - **局域网同步** - 可信设备之间自动同步数据
 - **主题定制** - 支持浅色/深色主题，自定义主题色
 - **Windows 特性** - 钉在桌面、边缘隐藏、自定义透明度
 
-## 平台支持
+## 界面截图
 
-| 平台 | 状态 |
-|------|------|
-| Windows | ✅ |
-| Android | ✅ |
-| iOS | 🚧 未测试 |
-| macOS | 🚧 未测试 |
-| Linux | 🚧 未测试 |
+<img src="./assets/image-20251214162638893.png" alt="image-20251214162638893" style="zoom: 33%;" /><img src="./assets/image-20251214162717237.png" alt="image-20251214162717237" style="zoom:33%;" />
 
-## 开发环境
+## 自己构建
+
+### 开发环境
 
 - Flutter 3.x
 - Dart 3.x
 
-## 快速开始
+### 快速开始
 
 ```bash
 # 克隆项目
@@ -39,9 +34,9 @@ flutter pub get
 flutter run
 ```
 
-## 打包发布
+### 打包
 
-### Windows
+#### Windows
 
 ```bash
 flutter build windows --release
@@ -49,7 +44,7 @@ flutter build windows --release
 
 输出位置：`build/windows/x64/runner/Release/`
 
-### Android
+#### Android
 
 1. 生成签名密钥（首次）：
 ```bash
@@ -78,17 +73,7 @@ flutter build apk --release
 - 同步基于时间戳的冲突解决策略（最新修改优先）
 - 支持删除同步（墓碑机制）
 
-## 项目结构
-
-```
-lib/
-├── main.dart              # 应用入口
-├── models/                # 数据模型
-├── providers/             # 状态管理
-├── services/              # 服务层（同步、存储等）
-└── widgets/               # UI 组件
-```
-
 ## 许可证
 
-MIT License
+- 版权所有 (c) 2025 PortianLiu (GitHub: https://github.com/PortianLiu)
+- 本项目基于 **Mozilla Public License 2.0 (MPL 2.0)** 开源，完整协议见仓库根目录 [LICENSE](LICENSE) 文件；

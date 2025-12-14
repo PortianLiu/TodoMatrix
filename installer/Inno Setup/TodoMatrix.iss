@@ -2,15 +2,17 @@
 ; 有关创建 Inno Setup 脚本文件的详细信息，请参阅帮助文档！
 
 #define MyAppName "TodoMatrix"
-#define MyAppVersion "2.1.5"
+#define MyAppVersion "2.1.6"
 #define MyAppPublisher "PortianLiu"
 #define MyAppURL "https://github.com/PortianLiu/TodoMatrix"
 #define MyAppExeName "todo_matrix.exe"
+#define ProjectDir "A:\WorkSpace\Kiro\TodoMatrix\todo_matrix"
+#define BuildDir "A:\WorkSpace\Kiro\TodoMatrix\todo_matrix\build\windows\x64\runner\Release"
 
 [Setup]
 ; 注意：AppId 的值唯一标识此应用程序。不要在其他应用程序的安装程序中使用相同的 AppId 值。
 ; (若要生成新的 GUID，请在 IDE 中单击 "工具|生成 GUID"。)
-AppId={{CD50318F-1A80-4A72-8380-B1435BF352BB}
+AppId={{CD50318F-1A80-4A72-8380-B1435BF352BB}}
 AppName={#MyAppName}
 AppVersion={#MyAppVersion}
 ;AppVerName={#MyAppName} {#MyAppVersion}
@@ -30,13 +32,13 @@ ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
 DefaultGroupName=Todo Matrix
 AllowNoIcons=yes
-LicenseFile=A:\WorkSpace\Kiro\TodoMatrix\todo_matrix\END_USER_LICENSE_AGREEMENT.md
+LicenseFile={#ProjectDir}\END_USER_LICENSE_AGREEMENT.md
 ; 移除以下行以在管理安装模式下运行 (为所有用户安装)。
 PrivilegesRequired=lowest
 PrivilegesRequiredOverridesAllowed=commandline
-OutputDir=A:\WorkSpace\Kiro\TodoMatrix\todo_matrix\build
+OutputDir={#ProjectDir}\build
 OutputBaseFilename=Setup_{#MyAppName}_x64_v{#MyAppVersion}
-SetupIconFile=A:\WorkSpace\Kiro\TodoMatrix\todo_matrix\assets\app_icon.ico
+SetupIconFile={#ProjectDir}\assets\app_icon.ico
 SolidCompression=yes
 WizardStyle=modern
 
@@ -47,8 +49,13 @@ Name: "chinesesimp"; MessagesFile: "compiler:Default.isl"
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"; Flags: unchecked
 
 [Files]
-Source: "A:\WorkSpace\Kiro\TodoMatrix\todo_matrix\build\windows\x64\runner\Release\{#MyAppExeName}"; DestDir: "{app}"; Flags: ignoreversion
-; 注意：不要在任何共享系统文件上使用 "Flags: ignoreversion" 
+Source: "{#BuildDir}\{#MyAppExeName}"; DestDir: "{app}"; Flags: ignoreversion
+Source: "{#BuildDir}\flutter_windows.dll"; DestDir: "{app}"; Flags: ignoreversion
+Source: "{#BuildDir}\screen_retriever_windows_plugin.dll"; DestDir: "{app}"; Flags: ignoreversion
+Source: "{#BuildDir}\system_tray_plugin.dll"; DestDir: "{app}"; Flags: ignoreversion
+Source: "{#BuildDir}\window_manager_plugin.dll"; DestDir: "{app}"; Flags: ignoreversion
+Source: "{#BuildDir}\data\*"; DestDir: "{app}\data"; Flags: ignoreversion recursesubdirs createallsubdirs
+; 注意：不要在任何共享系统文件上使用 "Flags: ignoreversion"
 
 [Icons]
 Name: "{group}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"

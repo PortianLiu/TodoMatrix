@@ -5,6 +5,10 @@
 -keep class io.flutter.view.**  { *; }
 -keep class io.flutter.**  { *; }
 -keep class io.flutter.plugins.**  { *; }
+-keep class io.flutter.embedding.** { *; }
+
+# 保留 MainActivity
+-keep class lpt.todo_matrix.MainActivity { *; }
 
 # 保留注解
 -keepattributes *Annotation*

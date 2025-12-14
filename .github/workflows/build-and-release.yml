@@ -72,7 +72,7 @@ jobs:
         run: |
           $VERSION = "${{ github.ref_name }}".Replace("v", "")
           $env:MY_APP_VERSION = $VERSION
-          iscc "installer/Inno Setup/TodoMatrix.iss" /O"build" /F"TodoMatrix_Setup_x64_v$VERSION"
+          iscc "TodoMatrix.iss" /O"build" /F"TodoMatrix_Setup_x64_v$VERSION"
 
       # 步骤9：规范化重命名APK（默认APK名→TodoMatrix_Android_v2.1.6.apk）
       - name: Rename APK

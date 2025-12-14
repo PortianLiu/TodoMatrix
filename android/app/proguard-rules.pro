@@ -11,3 +11,8 @@
 
 # 保留行号（用于崩溃日志）
 -keepattributes SourceFile,LineNumberTable
+
+# Play Core 相关（Flutter 延迟组件功能，不使用时可忽略）
+-dontwarn com.google.android.play.core.splitcompat.SplitCompatApplication
+-dontwarn com.google.android.play.core.splitinstall.**
+-dontwarn com.google.android.play.core.tasks.**

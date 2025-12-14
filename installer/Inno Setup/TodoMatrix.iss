@@ -2,12 +2,12 @@
 ; 有关创建 Inno Setup 脚本文件的详细信息，请参阅帮助文档！
 
 #define MyAppName "TodoMatrix"
-#define MyAppVersion "2.1.6"
+#define MyAppVersion GetEnv("MY_APP_VERSION")  ; 从环境变量读取版本号
 #define MyAppPublisher "PortianLiu"
 #define MyAppURL "https://github.com/PortianLiu/TodoMatrix"
 #define MyAppExeName "todo_matrix.exe"
-#define ProjectDir "A:\WorkSpace\Kiro\TodoMatrix\todo_matrix"
-#define BuildDir "A:\WorkSpace\Kiro\TodoMatrix\todo_matrix\build\windows\x64\runner\Release"
+#define ProjectDir "."
+#define BuildDir ".\build\windows\x64\runner\Release"
 
 [Setup]
 ; 注意：AppId 的值唯一标识此应用程序。不要在其他应用程序的安装程序中使用相同的 AppId 值。

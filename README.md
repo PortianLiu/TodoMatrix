@@ -1,16 +1,94 @@
-# todo_matrix
+# Todo Matrix
 
-A new Flutter project.
+一个基于四象限法则的待办事项管理应用，支持 Windows 和 Android 平台，具备局域网多设备同步功能。
 
-## Getting Started
+## 功能特性
 
-This project is a starting point for a Flutter application.
+- **四象限管理** - 按重要/紧急程度分类待办事项
+- **多列表支持** - 自定义待办列表，支持拖拽排序
+- **局域网同步** - 可信设备之间自动同步数据
+- **主题定制** - 支持浅色/深色主题，自定义主题色
+- **Windows 特性** - 钉在桌面、边缘隐藏、自定义透明度
 
-A few resources to get you started if this is your first Flutter project:
+## 平台支持
 
-- [Lab: Write your first Flutter app](https://docs.flutter.dev/get-started/codelab)
-- [Cookbook: Useful Flutter samples](https://docs.flutter.dev/cookbook)
+| 平台 | 状态 |
+|------|------|
+| Windows | ✅ |
+| Android | ✅ |
+| iOS | 🚧 未测试 |
+| macOS | 🚧 未测试 |
+| Linux | 🚧 未测试 |
 
-For help getting started with Flutter development, view the
-[online documentation](https://docs.flutter.dev/), which offers tutorials,
-samples, guidance on mobile development, and a full API reference.
+## 开发环境
+
+- Flutter 3.x
+- Dart 3.x
+
+## 快速开始
+
+```bash
+# 克隆项目
+git clone <repository-url>
+cd todo_matrix
+
+# 安装依赖
+flutter pub get
+
+# 运行调试版本
+flutter run
+```
+
+## 打包发布
+
+### Windows
+
+```bash
+flutter build windows --release
+```
+
+输出位置：`build/windows/x64/runner/Release/`
+
+### Android
+
+1. 生成签名密钥（首次）：
+```bash
+keytool -genkey -v -keystore todo-matrix-key.jks -keyalg RSA -keysize 2048 -validity 10000 -alias todo-matrix
+```
+
+2. 在 `android/` 目录下创建 `key.properties`：
+```properties
+storePassword=你的密钥库密码
+keyPassword=你的密钥密码
+keyAlias=todo-matrix
+storeFile=密钥文件路径
+```
+
+3. 打包：
+```bash
+flutter build apk --release
+```
+
+输出位置：`build/app/outputs/flutter-apk/app-release.apk`
+
+## 同步功能说明
+
+- 设备通过 UDP 广播在局域网内发现彼此
+- 只有互相添加为"可信设备"的设备之间才能同步数据
+- 同步基于时间戳的冲突解决策略（最新修改优先）
+- 支持删除同步（墓碑机制）
+
+## 项目结构
+
+```
+lib/
+├── main.dart              # 应用入口
+├── models/                # 数据模型
+├── providers/             # 状态管理
+├── services/              # 服务层（同步、存储等）
+└── widgets/               # UI 组件
+```
+
+## 许可证
+
+MIT License

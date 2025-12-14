@@ -30,6 +30,27 @@ jobs:
       - name: Build Windows Release
         run: flutter build windows --release
 
+      # 步骤4.5.1：还原keystore文件到android/app目录
+      - name: Restore Android Keystore File
+        run: |
+          $BASE64_CONTENT = "${{ secrets.ANDROID_KEYSTORE_BASE64 }}"
+          $BASE64_CONTENT | Out-File -FilePath keystore_base64_temp.txt -Encoding ASCII
+          certutil -decode keystore_base64_temp.txt android/app/todo_matrix_key.jks
+          Remove-Item keystore_base64_temp.txt
+        shell: pwsh
+
+      # 步骤2：生成key.properties文件（和你本地格式完全一致）
+      - name: Generate Android key.properties
+        run: |
+          $KEY_PROPS_CONTENT = @"
+          keyAlias=${{ secrets.ANDROID_KEY_ALIAS }}
+          keyPassword=${{ secrets.ANDROID_KEY_PASSWORD }}
+          storeFile=todo_matrix_key.jks
+          storePassword=${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          "@
+          $KEY_PROPS_CONTENT | Out-File -FilePath android/key.properties -Encoding ASCII
+        shell: pwsh
+
       # 步骤5：构建Android Release APK
       - name: Build Android Release APK
         run: flutter build apk --release --split-per-abi  # 可选：拆分ABI，也可去掉--split-per-abi

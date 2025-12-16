@@ -87,7 +87,7 @@ jobs:
           # 要上传的文件列表（压缩包、安装包、APK）
           files: |
             build/TodoMatrix_Win_Release_${{ github.ref_name }}.7z
-            build/installer/TodoMatrix_Setup_x64_${{ github.ref_name }}.exe
+            build/TodoMatrix_Setup_x64_${{ github.ref_name }}.exe
             build/TodoMatrix_Android_${{ github.ref_name }}.apk
           # 可选：自动生成Release说明（也可手动改）
           body: |

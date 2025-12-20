@@ -75,5 +75,5 @@ flutter build apk --release
 
 ## 许可证
 
-- 版权所有 (c) 2025 PortianLiu (GitHub: https://github.com/PortianLiu)
+- 版权所有 (c) 2025 PortianLiu <PortianLiu@163.com> (GitHub: https://github.com/PortianLiu)
 - 本项目基于 **Mozilla Public License 2.0 (MPL 2.0)** 开源，完整协议见仓库根目录 [LICENSE](LICENSE) 文件；
